@@ -1,5 +1,5 @@
 repeat task.wait() until game:IsLoaded()
-shared.PlayerContainer = shared.PlayerContainer or "Players"
+shared.PlayerContainer = tostring(shared.PlayerContainer or "Players")
 if shared.vape then shared.vape:Uninject() end
 
 local vape
