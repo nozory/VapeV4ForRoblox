@@ -2,6 +2,7 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: # Ajoute un bouton pour lancer l'action manuellement
 
 env:
   NODE_VERSION: '24.15.0'
@@ -11,17 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Clone source files
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
 
     - name: Clone destination files
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       with:
         repository: nozory/VapeCompiled
         token: ${{ secrets.ACTIONS_GITHUB_TOKEN }}
         path: "./VapeCompiled"
 
     - name: Clone bundler
-      uses: actions/checkout@v6
+      uses: actions/checkout@v4
       with:
         repository: nozory/VapeBundler
         path: "./VapeBundler"
@@ -36,7 +37,7 @@ jobs:
         npm i
 
     - name: Set up Node.js
-      uses: actions/setup-node@v6
+      uses: actions/setup-node@v4
 
     - name: Run Bundler
       run: |-
