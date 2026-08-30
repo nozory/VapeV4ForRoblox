@@ -276,11 +276,12 @@ general:CreateTextBox({
     Name = 'Player Container',
     Tooltip = 'Path to the player container (e.g., Workspace, Workspace.Players)',
     Placeholder = 'Players',
-    Default = shared.PlayerContainer or 'Players',
+    Default = tostring(shared.PlayerContainer or 'Players'),
     Function = function(value)
-        shared.PlayerContainer = value
+        local path = tostring(value)
+        shared.PlayerContainer = path
         if vape.Libraries.entity and vape.Libraries.entity.updateContainer then
-            vape.Libraries.entity.updateContainer(value)
+            vape.Libraries.entity.updateContainer(path)
         elseif vape.Libraries.entity and vape.Libraries.entity.Running then
             vape.Libraries.entity.stop()
             vape.Libraries.entity.start()
