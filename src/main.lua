@@ -1,111 +1,572 @@
-repeat task.wait() until game:IsLoaded()
-shared.PlayerContainer = tostring(shared.PlayerContainer or "Players")
-if shared.vape then shared.vape:Uninject() end
+local entitylib = {
+	isAlive = false,
+	character = {},
+	List = {},
+	Connections = {},
+	PlayerConnections = {},
+	EntityThreads = {},
+	Running = false,
+	Events = setmetatable({}, {
+		__index = function(self, ind)
+			self[ind] = {
+				Connections = {},
+				Connect = function(rself, func)
+					table.insert(rself.Connections, func)
+					return {
+						Disconnect = function()
+							local rind = table.find(rself.Connections, func)
+							if rind then
+								table.remove(rself.Connections, rind)
+							end
+						end
+					}
+				end,
+				Fire = function(rself, ...)
+					for _, v in rself.Connections do
+						task.spawn(v, ...)
+					end
+				end,
+				Destroy = function(rself)
+					table.clear(rself.Connections)
+					table.clear(rself)
+				end
+			}
 
-local vape
-local loadstring = function(...)
-	local res, err = loadstring(...)
-	if err and vape then
-		vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert')
-	end
-	return res
-end
-local queue_on_teleport = queue_on_teleport or function() end
-local isfile = isfile or function(file)
-	local suc, res = pcall(function()
-		return readfile(file)
-	end)
-	return suc and res ~= nil and res ~= ''
-end
+			return self[ind]
+		end
+	})
+}
+
 local cloneref = cloneref or function(obj)
 	return obj
 end
 local playersService = cloneref(game:GetService('Players'))
+-- Conteneur personnalisé pour les joueurs (défini par l'utilisateur)
+local playerContainerPath = tostring(shared.PlayerContainer or "Players")
+local inputService = cloneref(game:GetService('UserInputService'))
+local lplr = playersService.LocalPlayer
+local gameCamera = workspace.CurrentCamera
 
-local function downloadFile(path, func)
-	if not isfile(path) then
-		local suc, res = pcall(function()
-			return game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+local function getMousePosition()
+	if inputService.TouchEnabled then
+		return gameCamera.ViewportSize / 2
+	end
+
+	return inputService.GetMouseLocation(inputService)
+end
+
+-- =====================================================
+--  FONCTIONS POUR LE CONTENEUR PERSONNALISÉ
+-- =====================================================
+
+-- Récupère la liste des joueurs depuis le conteneur personnalisé
+local function getPlayersFromContainer()
+	-- Lit directement la valeur actuelle de shared.PlayerContainer
+	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
+
+	if path == "Players" then
+		return playersService:GetPlayers()
+	end
+
+	local parts = {}
+	for part in path:gmatch("[^%.]+") do
+		table.insert(parts, part)
+	end
+
+	local current = game
+	for _, part in ipairs(parts) do
+		current = current and current:FindFirstChild(part)
+		if not current then break end
+	end
+
+	if current then
+		local players = {}
+		for _, child in current:GetChildren() do
+			if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+				local fakePlayer = {
+					Name = child.Name,
+					Character = child,
+					UserId = 0,
+					IsA = function(_, className)
+						return className == "Player" or className == "Instance"
+					end
+				}
+				table.insert(players, fakePlayer)
+			end
+		end
+		return players
+	end
+
+	warn("[Entity] Container not found:", path)
+	return {}
+end
+
+-- Récupère le conteneur lui-même (pour les événements)
+local function getContainer()
+	-- Lit directement la valeur actuelle de shared.PlayerContainer
+	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
+
+	if path == "Players" then
+		return playersService
+	end
+
+	local parts = {}
+	for part in path:gmatch("[^%.]+") do
+		table.insert(parts, part)
+	end
+
+	local current = game
+	for _, part in ipairs(parts) do
+		current = current and current:FindFirstChild(part)
+		if not current then break end
+	end
+	return current
+end
+
+-- =====================================================
+--  FIN DES FONCTIONS POUR LE CONTENEUR
+-- =====================================================
+
+local function loopClean(tbl)
+	for i, v in tbl do
+		if type(v) == 'table' then
+			loopClean(v)
+		end
+
+		tbl[i] = nil
+	end
+end
+
+local function waitForChildOfType(obj, name, timeout, prop)
+	local checktick = tick() + timeout
+	local returned
+	repeat
+		returned = prop and obj[name] or obj:FindFirstChildOfClass(name)
+		if returned or checktick < tick() then break end
+		task.wait()
+	until false
+	return returned
+end
+
+entitylib.targetCheck = function(entity)
+	if entity.TeamCheck then
+		return entity:TeamCheck()
+	end
+	if entity.NPC then return true end
+	if not lplr.Team then return true end
+	if not entity.Player.Team then return true end
+	if entity.Player.Team ~= lplr.Team then return true end
+	return #entity.Player.Team:GetPlayers() == #playersService:GetPlayers()
+end
+
+entitylib.getUpdateConnections = function(entity)
+	local humanoid = entity.Humanoid
+	return {
+		humanoid:GetPropertyChangedSignal('Health'),
+		humanoid:GetPropertyChangedSignal('MaxHealth')
+	}
+end
+
+entitylib.isVulnerable = function(entity)
+	return entity.Health > 0 and not entity.Character.FindFirstChildWhichIsA(entity.Character, 'ForceField')
+end
+
+entitylib.getEntityColor = function(entity)
+	entity = entity.Player
+	return entity and tostring(entity.TeamColor) ~= 'White' and entity.TeamColor.Color or nil
+end
+
+entitylib.IgnoreObject = RaycastParams.new()
+entitylib.IgnoreObject.RespectCanCollide = true
+entitylib.Wallcheck = function(origin, position, ignoreobject)
+	if typeof(ignoreobject) ~= 'Instance' then
+		local ignorelist = {gameCamera, lplr.Character}
+		for _, entity in entitylib.List do
+			if entity.Targetable then
+				table.insert(ignorelist, entity.Character)
+			end
+		end
+
+		if typeof(ignoreobject) == 'table' then
+			for _, obj in ignoreobject do
+				table.insert(ignorelist, obj)
+			end
+		end
+
+		ignoreobject = entitylib.IgnoreObject
+		ignoreobject.FilterDescendantsInstances = ignorelist
+	end
+	return workspace.Raycast(workspace, origin, (position - origin), ignoreobject)
+end
+
+entitylib.EntityMouse = function(entitysettings)
+	if entitylib.isAlive then
+		local mouseLocation, sortingTable = entitysettings.MouseOrigin or getMousePosition(), {}
+		for _, entity in entitylib.List do
+			if not entitysettings.Players and entity.Player then continue end
+			if not entitysettings.NPCs and entity.NPC then continue end
+			if not entity.Targetable then continue end
+			local position, vis = gameCamera.WorldToViewportPoint(gameCamera, entity[entitysettings.Part].Position)
+			if not vis then continue end
+			local mag = (mouseLocation - Vector2.new(position.x, position.y)).Magnitude
+			if mag > entitysettings.Range then continue end
+			if entitylib.isVulnerable(entity) then
+				table.insert(sortingTable, {
+					Entity = entity,
+					Magnitude = entity.Target and -1 or mag
+				})
+			end
+		end
+
+		table.sort(sortingTable, entitysettings.Sort or function(a, b)
+			return a.Magnitude < b.Magnitude
 		end)
-		if not suc or res == '404: Not Found' then
-			error(res)
+
+		for _, v in sortingTable do
+			if entitysettings.Wallcheck then
+				if entitylib.Wallcheck(entitysettings.Origin, v.Entity[entitysettings.Part].Position, entitysettings.Wallcheck) then continue end
+			end
+			table.clear(entitysettings)
+			table.clear(sortingTable)
+			return v.Entity
 		end
-		if path:find('.lua') then
-			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
-		end
-		writefile(path, res)
+		table.clear(sortingTable)
 	end
-	return (func or readfile)(path)
+	table.clear(entitysettings)
 end
 
-local function finishLoading()
-	vape.Init = nil
-	vape:Load()
-	task.spawn(function()
-		repeat
-			vape:Save()
-			task.wait(10)
-		until not vape.Loaded
-	end)
+entitylib.EntityPosition = function(entitysettings)
+	if entitylib.isAlive then
+		local localPosition, sortingTable = entitysettings.Origin or entitylib.character.HumanoidRootPart.Position, {}
+		for _, entity in entitylib.List do
+			if not entitysettings.Players and entity.Player then continue end
+			if not entitysettings.NPCs and entity.NPC then continue end
+			if not entity.Targetable then continue end
+			local mag = (entity[entitysettings.Part].Position - localPosition).Magnitude
+			if mag > entitysettings.Range then continue end
+			if entitylib.isVulnerable(entity) then
+				table.insert(sortingTable, {
+					Entity = entity,
+					Magnitude = entity.Target and -1 or mag
+				})
+			end
+		end
 
-	local teleportedServers
-	vape:Clean(playersService.LocalPlayer.OnTeleport:Connect(function()
-		if (not teleportedServers) and (not shared.VapeIndependent) then
-			teleportedServers = true
-			local teleportScript = [[
-				shared.vapereload = true
-				if shared.VapeDeveloper then
-					loadstring(readfile('newvape/loader.lua'), 'loader')()
-				else
-					loadstring(game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')()
+		table.sort(sortingTable, entitysettings.Sort or function(a, b)
+			return a.Magnitude < b.Magnitude
+		end)
+
+		for _, v in sortingTable do
+			if entitysettings.Wallcheck then
+				if entitylib.Wallcheck(localPosition, v.Entity[entitysettings.Part].Position, entitysettings.Wallcheck) then continue end
+			end
+			table.clear(entitysettings)
+			table.clear(sortingTable)
+			return v.Entity
+		end
+		table.clear(sortingTable)
+	end
+	table.clear(entitysettings)
+end
+
+entitylib.AllPosition = function(entitysettings)
+	local returned = {}
+	if entitylib.isAlive then
+		local localPosition, sortingTable = entitysettings.Origin or entitylib.character.HumanoidRootPart.Position, {}
+		for _, entity in entitylib.List do
+			if not entitysettings.Players and entity.Player then continue end
+			if not entitysettings.NPCs and entity.NPC then continue end
+			if not entity.Targetable then continue end
+			local mag = (entity[entitysettings.Part].Position - localPosition).Magnitude
+			if mag > entitysettings.Range then continue end
+			if entitylib.isVulnerable(entity) then
+				table.insert(sortingTable, {
+					Entity = entity,
+					Magnitude = entity.Target and -1 or mag
+				})
+			end
+		end
+
+		table.sort(sortingTable, entitysettings.Sort or function(a, b)
+			return a.Magnitude < b.Magnitude
+		end)
+
+		for _, v in sortingTable do
+			if entitysettings.Wallcheck then
+				if entitylib.Wallcheck(localPosition, v.Entity[entitysettings.Part].Position, entitysettings.Wallcheck) then continue end
+			end
+			table.insert(returned, v.Entity)
+			if #returned >= (entitysettings.Limit or math.huge) then break end
+		end
+		table.clear(sortingTable)
+	end
+	table.clear(entitysettings)
+	return returned
+end
+
+entitylib.getEntity = function(char)
+	for index, entity in entitylib.List do
+		if entity.Player == char or entity.Character == char then
+			return entity, index
+		end
+	end
+end
+
+entitylib.addEntity = function(char, plr, teamfunc, spawntime)
+	if not char then
+		return
+	end
+
+	entitylib.EntityThreads[char] = task.spawn(function()
+		local hum = waitForChildOfType(char, 'Humanoid', 10)
+		local humrootpart = hum and waitForChildOfType(hum, 'RootPart', workspace.StreamingEnabled and 9e9 or 10, true)
+		local head = char:WaitForChild('Head', 10) or humrootpart
+
+		if hum and humrootpart then
+			local entity = {
+				Connections = {},
+				Character = char,
+				Health = hum.Health,
+				Head = head,
+				Humanoid = hum,
+				HumanoidRootPart = humrootpart,
+				HipHeight = hum.HipHeight + (humrootpart.Size.Y / 2) + (hum.RigType == Enum.HumanoidRigType.R6 and 2 or 0),
+				MaxHealth = hum.MaxHealth,
+				NPC = plr == nil,
+				Player = plr,
+				RootPart = humrootpart,
+				SpawnTime = spawntime or 0,
+				TeamCheck = teamfunc
+			}
+
+			if plr == lplr then
+				entitylib.character = entity
+				entitylib.isAlive = true
+				entitylib.Events.LocalAdded:Fire(entity)
+			else
+				entity.Targetable = entitylib.targetCheck(entity)
+
+				for _, connection in entitylib.getUpdateConnections(entity) do
+					table.insert(entity.Connections, connection:Connect(function()
+						entity.Health = hum.Health
+						entity.MaxHealth = hum.MaxHealth
+						entitylib.Events.EntityUpdated:Fire(entity)
+					end))
 				end
-			]]
-			if shared.VapeDeveloper then
-				teleportScript = 'shared.VapeDeveloper = true\n'..teleportScript
-			end
-			if shared.VapeCustomProfile then
-				teleportScript = 'shared.VapeCustomProfile = "'..shared.VapeCustomProfile..'"\n'..teleportScript
-			end
-			vape:Save()
-			queue_on_teleport(teleportScript)
-		end
-	end))
 
-	if not shared.vapereload then
-		if not vape.Categories then return end
-		if vape.Settings.GUI.Options['GUI bind indicator'].Enabled then
-			vape:CreateNotification('Finished Loading', vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.GUIBind.Keys, ' + '):upper()..' to open GUI', 5)
+				table.insert(entitylib.List, entity)
+				entitylib.Events.EntityAdded:Fire(entity)
+			end
+		end
+
+		entitylib.EntityThreads[char] = nil
+	end)
+end
+
+entitylib.removeEntity = function(char, isLocal)
+	if isLocal then
+		if entitylib.isAlive then
+			entitylib.isAlive = false
+			for _, v in entitylib.character.Connections do
+				v:Disconnect()
+			end
+			table.clear(entitylib.character.Connections)
+			entitylib.Events.LocalRemoved:Fire(entitylib.character)
+		end
+
+		return
+	end
+
+	if char then
+		if entitylib.EntityThreads[char] then
+			task.cancel(entitylib.EntityThreads[char])
+			entitylib.EntityThreads[char] = nil
+		end
+
+		local entity, index = entitylib.getEntity(char)
+		if index then
+			for _, v in entity.Connections do
+				v:Disconnect()
+			end
+
+			table.clear(entity.Connections)
+			table.remove(entitylib.List, index)
+			entitylib.Events.EntityRemoved:Fire(entity)
 		end
 	end
 end
 
-if not isfile('newvape/profiles/gui.txt') then
-	writefile('newvape/profiles/gui.txt', 'new')
+entitylib.refreshEntity = function(char, plr, spawntime)
+	local entity = entitylib.getEntity(plr)
+	entitylib.removeEntity(char)
+	entitylib.addEntity(char, plr, entity and entity.TeamCheck or nil, spawntime)
 end
-local gui = 'new'--readfile('newvape/profiles/gui.txt')
 
-if not isfolder('newvape/assets/'..gui) then
-	makefolder('newvape/assets/'..gui)
+entitylib.addPlayer = function(plr)
+	if plr.Character then
+		entitylib.refreshEntity(plr.Character, plr)
+	end
+
+	entitylib.PlayerConnections[plr] = {
+		plr.CharacterAdded:Connect(function(char)
+			entitylib.refreshEntity(char, plr, os.clock() + 0.4)
+		end),
+		plr.CharacterRemoving:Connect(function(char)
+			entitylib.removeEntity(char, plr == lplr)
+		end),
+		plr:GetPropertyChangedSignal('Team'):Connect(function()
+			if plr == lplr then
+				local cloned = table.clone(entitylib.List)
+				for _, entity in cloned do
+					if entity.Targetable ~= entitylib.targetCheck(entity) then
+						entitylib.refreshEntity(entity.Character, entity.Player)
+					end
+				end
+
+				table.clear(cloned)
+			else
+				local entity = entitylib.getEntity(plr)
+				if entity then
+					entitylib.refreshEntity(entity.Character, plr)
+				end
+			end
+		end)
+	}
 end
-vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
-shared.vape = vape
 
-if not shared.VapeIndependent then
-	loadstring(downloadFile('newvape/games/universal.lua'), 'universal')()
-	if isfile('newvape/games/'..game.PlaceId..'.lua') then
-		loadstring(readfile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
-	else
-		if not shared.VapeDeveloper then
-			local suc, res = pcall(function()
-				return game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/games/'..game.PlaceId..'.lua', true)
+entitylib.removePlayer = function(plr)
+	if entitylib.PlayerConnections[plr] then
+		for _, v in entitylib.PlayerConnections[plr] do
+			v:Disconnect()
+		end
+
+		table.clear(entitylib.PlayerConnections[plr])
+		entitylib.PlayerConnections[plr] = nil
+	end
+
+	entitylib.removeEntity(plr)
+end
+
+entitylib.start = function()
+	print("[Entity] Starting with container:", type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players")
+
+	if entitylib.Running then
+		entitylib.stop()
+	end
+
+	local container = getContainer()
+
+	if container == playersService then
+		entitylib.Connections = {
+			playersService.PlayerAdded:Connect(function(player)
+				entitylib.addPlayer(player)
+			end),
+			playersService.PlayerRemoving:Connect(function(player)
+				entitylib.removePlayer(player)
+			end),
+			workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
+				gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
 			end)
-			if suc and res ~= '404: Not Found' then
-				loadstring(downloadFile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
-			end
-		end
+		}
+	elseif container then
+		entitylib.Connections = {
+			container.ChildAdded:Connect(function(child)
+				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+					local fakePlayer = {
+						Name = child.Name,
+						Character = child,
+						UserId = 0,
+						IsA = function(_, className)
+							return className == "Player" or className == "Instance"
+						end
+					}
+					entitylib.addPlayer(fakePlayer)
+				end
+			end),
+			container.ChildRemoving:Connect(function(child)
+				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+					entitylib.removeEntity(child)
+				end
+			end),
+			workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
+				gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
+			end)
+		}
+	else
+		warn("[Entity] No valid container found, entity system may not work.")
+		entitylib.Connections = {}
 	end
-	finishLoading()
-else
-	vape.Init = finishLoading
-	return vape
+
+	local players = getPlayersFromContainer()
+	for _, player in players do
+		entitylib.addPlayer(player)
+	end
+
+	entitylib.Running = true
 end
+
+entitylib.stop = function()
+	for _, v in entitylib.Connections do
+		v:Disconnect()
+	end
+
+	for _, v in entitylib.PlayerConnections do
+		for _, v2 in v do
+			v2:Disconnect()
+		end
+		table.clear(v)
+	end
+
+	entitylib.removeEntity(nil, true)
+	local cloned = table.clone(entitylib.List)
+	for _, entity in cloned do
+		entitylib.removeEntity(entity.Character)
+	end
+
+	for _, thread in entitylib.EntityThreads do
+		task.cancel(thread)
+	end
+
+	table.clear(entitylib.PlayerConnections)
+	table.clear(entitylib.EntityThreads)
+	table.clear(entitylib.Connections)
+	table.clear(cloned)
+	entitylib.Running = false
+end
+
+-- Met à jour le conteneur de joueurs et recharge la liste
+function entitylib.updateContainer(newPath)
+	local path = tostring(newPath or "Players")
+	playerContainerPath = path
+	shared.PlayerContainer = path
+	print("[Entity] updateContainer called with:", newPath, "-> path:", path)
+	if entitylib.Running then
+		entitylib.stop()
+		entitylib.start()
+	end
+end
+
+entitylib.kill = function()
+	if entitylib.Running then
+		entitylib.stop()
+	end
+
+	for _, event in entitylib.Events do
+		event:Destroy()
+	end
+
+	entitylib.IgnoreObject:Destroy()
+	loopClean(entitylib)
+end
+
+entitylib.refresh = function()
+	local cloned = table.clone(entitylib.List)
+	for _, entity in cloned do
+		entitylib.refreshEntity(entity.Character, entity.Player)
+	end
+	table.clear(cloned)
+end
+
+entitylib.start()
+
+return entitylib
