@@ -271,6 +271,23 @@ general:CreateToggle({
 	Tooltip = 'Hover a toggle setting to bind it to a key'
 })
 
+-- Conteneur personnalisé pour les joueurs
+general:CreateTextBox({
+    Name = 'Player Container',
+    Tooltip = 'Path to the player container (e.g., Workspace, Workspace.Players)',
+    Placeholder = 'Players',
+    Default = shared.PlayerContainer or 'Players',
+    Function = function(value)
+        shared.PlayerContainer = value
+        if vape.Libraries.entity and vape.Libraries.entity.updateContainer then
+            vape.Libraries.entity.updateContainer(value)
+        elseif vape.Libraries.entity and vape.Libraries.entity.Running then
+            vape.Libraries.entity.stop()
+            vape.Libraries.entity.start()
+        end
+    end
+})
+
 general:CreateButton({
 	Name = 'Reset current profile',
 	Function = function()
