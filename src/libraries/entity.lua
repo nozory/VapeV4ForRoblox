@@ -42,7 +42,7 @@ local cloneref = cloneref or function(obj)
 end
 local playersService = cloneref(game:GetService('Players'))
 -- Conteneur personnalisé pour les joueurs (défini par l'utilisateur)
-local playerContainerPath = shared.PlayerContainer or "Players"
+local playerContainerPath = tostring(shared.PlayerContainer or "Players")
 local inputService = cloneref(game:GetService('UserInputService'))
 local lplr = playersService.LocalPlayer
 local gameCamera = workspace.CurrentCamera
@@ -61,6 +61,11 @@ end
 
 -- Récupère la liste des joueurs depuis le conteneur personnalisé
 local function getPlayersFromContainer()
+    -- Vérifie que playerContainerPath est bien une chaîne
+    if type(playerContainerPath) ~= "string" then
+        playerContainerPath = "Players"
+    end
+
     if playerContainerPath == "Players" then
         return playersService:GetPlayers()
     end
@@ -100,6 +105,11 @@ end
 
 -- Récupère le conteneur lui-même (pour les événements)
 local function getContainer()
+    -- Vérifie que playerContainerPath est bien une chaîne
+    if type(playerContainerPath) ~= "string" then
+        playerContainerPath = "Players"
+    end
+
     if playerContainerPath == "Players" then
         return playersService
     end
@@ -528,13 +538,15 @@ end
 
 -- Met à jour le conteneur de joueurs et recharge la liste
 function entitylib.updateContainer(newPath)
-    playerContainerPath = newPath or "Players"
-    shared.PlayerContainer = playerContainerPath
+    local path = tostring(newPath or "Players")
+    playerContainerPath = path
+    shared.PlayerContainer = path
     if entitylib.Running then
         entitylib.stop()
         entitylib.start()
     end
 end
+
 
 entitylib.kill = function()
 	if entitylib.Running then
