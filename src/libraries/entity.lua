@@ -56,79 +56,75 @@ local function getMousePosition()
 end
 
 -- =====================================================
---  FONCTIONS AJOUTÉES POUR LE CONTENEUR PERSONNALISÉ
+--  FONCTIONS POUR LE CONTENEUR PERSONNALISÉ
 -- =====================================================
 
 -- Récupère la liste des joueurs depuis le conteneur personnalisé
 local function getPlayersFromContainer()
-    -- Vérifie que playerContainerPath est bien une chaîne
-    if type(playerContainerPath) ~= "string" then
-        playerContainerPath = "Players"
-    end
+	-- Lit directement la valeur actuelle de shared.PlayerContainer
+	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
-    if playerContainerPath == "Players" then
-        return playersService:GetPlayers()
-    end
+	if path == "Players" then
+		return playersService:GetPlayers()
+	end
 
-    local parts = {}
-    for part in playerContainerPath:gmatch("[^%.]+") do
-        table.insert(parts, part)
-    end
+	local parts = {}
+	for part in path:gmatch("[^%.]+") do
+		table.insert(parts, part)
+	end
 
-    local current = game
-    for _, part in ipairs(parts) do
-        current = current and current:FindFirstChild(part)
-        if not current then break end
-    end
+	local current = game
+	for _, part in ipairs(parts) do
+		current = current and current:FindFirstChild(part)
+		if not current then break end
+	end
 
-    if current then
-        local players = {}
-        for _, child in current:GetChildren() do
-            if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
-                local fakePlayer = {
-                    Name = child.Name,
-                    Character = child,
-                    UserId = 0,
-                    IsA = function(_, className)
-                        return className == "Player" or className == "Instance"
-                    end
-                }
-                table.insert(players, fakePlayer)
-            end
-        end
-        return players
-    end
+	if current then
+		local players = {}
+		for _, child in current:GetChildren() do
+			if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+				local fakePlayer = {
+					Name = child.Name,
+					Character = child,
+					UserId = 0,
+					IsA = function(_, className)
+						return className == "Player" or className == "Instance"
+					end
+				}
+				table.insert(players, fakePlayer)
+			end
+		end
+		return players
+	end
 
-    warn("[Entity] Container not found:", playerContainerPath)
-    return {}
+	warn("[Entity] Container not found:", path)
+	return {}
 end
 
 -- Récupère le conteneur lui-même (pour les événements)
 local function getContainer()
-    -- Vérifie que playerContainerPath est bien une chaîne
-    if type(playerContainerPath) ~= "string" then
-        playerContainerPath = "Players"
-    end
+	-- Lit directement la valeur actuelle de shared.PlayerContainer
+	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
-    if playerContainerPath == "Players" then
-        return playersService
-    end
+	if path == "Players" then
+		return playersService
+	end
 
-    local parts = {}
-    for part in playerContainerPath:gmatch("[^%.]+") do
-        table.insert(parts, part)
-    end
+	local parts = {}
+	for part in path:gmatch("[^%.]+") do
+		table.insert(parts, part)
+	end
 
-    local current = game
-    for _, part in ipairs(parts) do
-        current = current and current:FindFirstChild(part)
-        if not current then break end
-    end
-    return current
+	local current = game
+	for _, part in ipairs(parts) do
+		current = current and current:FindFirstChild(part)
+		if not current then break end
+	end
+	return current
 end
 
 -- =====================================================
---  FIN DES FONCTIONS AJOUTÉES
+--  FIN DES FONCTIONS POUR LE CONTENEUR
 -- =====================================================
 
 local function loopClean(tbl)
@@ -452,59 +448,61 @@ entitylib.removePlayer = function(plr)
 end
 
 entitylib.start = function()
-    if entitylib.Running then
-        entitylib.stop()
-    end
+	print("[Entity] Starting with container:", type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players")
 
-    local container = getContainer()
+	if entitylib.Running then
+		entitylib.stop()
+	end
 
-    if container == playersService then
-        entitylib.Connections = {
-            playersService.PlayerAdded:Connect(function(player)
-                entitylib.addPlayer(player)
-            end),
-            playersService.PlayerRemoving:Connect(function(player)
-                entitylib.removePlayer(player)
-            end),
-            workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
-                gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
-            end)
-        }
-    elseif container then
-        entitylib.Connections = {
-            container.ChildAdded:Connect(function(child)
-                if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
-                    local fakePlayer = {
-                        Name = child.Name,
-                        Character = child,
-                        UserId = 0,
-                        IsA = function(_, className)
-                            return className == "Player" or className == "Instance"
-                        end
-                    }
-                    entitylib.addPlayer(fakePlayer)
-                end
-            end),
-            container.ChildRemoving:Connect(function(child)
-                if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
-                    entitylib.removeEntity(child)
-                end
-            end),
-            workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
-                gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
-            end)
-        }
-    else
-        warn("[Entity] No valid container found, entity system may not work.")
-        entitylib.Connections = {}
-    end
+	local container = getContainer()
 
-    local players = getPlayersFromContainer()
-    for _, player in players do
-        entitylib.addPlayer(player)
-    end
+	if container == playersService then
+		entitylib.Connections = {
+			playersService.PlayerAdded:Connect(function(player)
+				entitylib.addPlayer(player)
+			end),
+			playersService.PlayerRemoving:Connect(function(player)
+				entitylib.removePlayer(player)
+			end),
+			workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
+				gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
+			end)
+		}
+	elseif container then
+		entitylib.Connections = {
+			container.ChildAdded:Connect(function(child)
+				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+					local fakePlayer = {
+						Name = child.Name,
+						Character = child,
+						UserId = 0,
+						IsA = function(_, className)
+							return className == "Player" or className == "Instance"
+						end
+					}
+					entitylib.addPlayer(fakePlayer)
+				end
+			end),
+			container.ChildRemoving:Connect(function(child)
+				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+					entitylib.removeEntity(child)
+				end
+			end),
+			workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
+				gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
+			end)
+		}
+	else
+		warn("[Entity] No valid container found, entity system may not work.")
+		entitylib.Connections = {}
+	end
 
-    entitylib.Running = true
+	local players = getPlayersFromContainer()
+	for _, player in players do
+		entitylib.addPlayer(player)
+	end
+
+	entitylib.Running = true
 end
 
 entitylib.stop = function()
@@ -538,15 +536,15 @@ end
 
 -- Met à jour le conteneur de joueurs et recharge la liste
 function entitylib.updateContainer(newPath)
-    local path = tostring(newPath or "Players")
-    playerContainerPath = path
-    shared.PlayerContainer = path
-    if entitylib.Running then
-        entitylib.stop()
-        entitylib.start()
-    end
+	local path = tostring(newPath or "Players")
+	playerContainerPath = path
+	shared.PlayerContainer = path
+	print("[Entity] updateContainer called with:", newPath, "-> path:", path)
+	if entitylib.Running then
+		entitylib.stop()
+		entitylib.start()
+	end
 end
-
 
 entitylib.kill = function()
 	if entitylib.Running then
