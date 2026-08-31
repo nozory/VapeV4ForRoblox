@@ -271,28 +271,29 @@ general:CreateToggle({
 	Tooltip = 'Hover a toggle setting to bind it to a key'
 })
 
--- Conteneur personnalisé pour les joueurs (input natif Vape)
-general:CreateTextBox({
+-- Conteneur personnalisé pour les joueurs
+local containerBox = general:CreateTextBox({
     Name = 'Player Container',
     Tooltip = 'Path to the player container (e.g., Workspace, Workspace.Players)',
     Placeholder = 'Players',
     Default = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or 'Players',
-    Function = function(value)
-        local path = type(value) == "string" and value or "Players"
-        print("[Init] Player Container updated to:", path)
-        shared.PlayerContainer = path
+})
 
-        -- On essaie de mettre à jour entity si elle est chargée
-        if vape.Libraries and vape.Libraries.entity then
-            if vape.Libraries.entity.updateContainer then
-                vape.Libraries.entity.updateContainer(path)
-            elseif vape.Libraries.entity.Running then
-                vape.Libraries.entity.stop()
-                vape.Libraries.entity.start()
-            end
+-- On remplace la fonction par notre propre logique
+containerBox.Function = function(enterPressed)
+    local value = containerBox.Value  -- ← La vraie valeur saisie !
+    print("[Init] Player Container updated to:", value)
+    shared.PlayerContainer = value
+
+    if vape.Libraries and vape.Libraries.entity then
+        if vape.Libraries.entity.updateContainer then
+            vape.Libraries.entity.updateContainer(value)
+        elseif vape.Libraries.entity.Running then
+            vape.Libraries.entity.stop()
+            vape.Libraries.entity.start()
         end
     end
-})
+end
 
 -- Force l'application de la valeur quand entity sera chargée
 task.spawn(function()
