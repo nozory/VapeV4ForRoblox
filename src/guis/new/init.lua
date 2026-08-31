@@ -272,38 +272,67 @@ general:CreateToggle({
 })
 
 -- Conteneur personnalisé pour les joueurs
-general:CreateTextBox({
+local PlayerContainerBox = general:CreateTextBox({
     Name = 'Player Container',
     Tooltip = 'Path to the player container (e.g., Workspace, Workspace.Players)',
     Placeholder = 'Players',
     Default = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or 'Players',
     Function = function(value)
-        -- Force la conversion en chaîne
+        -- Cette fonction est appelée quand l'utilisateur appuie sur Entrée
+        print("[Init] TextBox Function called with value:", value)
         local path = type(value) == "string" and value or "Players"
-        
-        -- Met à jour la variable partagée
-        shared.PlayerContainer = path
-        
-        -- Essaie de mettre à jour entity si disponible
-        if vape.Libraries and vape.Libraries.entity then
-            if vape.Libraries.entity.updateContainer then
-                vape.Libraries.entity.updateContainer(path)
-            elseif vape.Libraries.entity.Running then
-                vape.Libraries.entity.stop()
-                vape.Libraries.entity.start()
-            end
-        end
-        
-        -- Force un rechargement du système d'entités
-        if vape.Libraries and vape.Libraries.entity and vape.Libraries.entity.Running then
-            vape.Libraries.entity.refresh()
-        end
-        
-        -- Notification pour l'utilisateur
-        vape:CreateNotification('Player Container', 'Set to: ' .. path, 2)
-        
-        print("[Init] Player Container updated to:", path)
+        print("[Init] path after conversion:", path)
+        applyPlayerContainer(path)
     end
+})
+
+-- Fonction qui applique le changement
+local function applyPlayerContainer(path)
+    print("[Init] applyPlayerContainer called with:", path)
+    
+    -- Force la conversion en chaîne
+    path = type(path) == "string" and path or "Players"
+    
+    -- Met à jour la variable partagée
+    shared.PlayerContainer = path
+    
+    print("[Init] shared.PlayerContainer set to:", shared.PlayerContainer)
+    
+    -- Essaie de mettre à jour entity si disponible
+    if vape.Libraries and vape.Libraries.entity then
+        print("[Init] entity found")
+        if vape.Libraries.entity.updateContainer then
+            print("[Init] calling entity.updateContainer")
+            vape.Libraries.entity.updateContainer(path)
+        elseif vape.Libraries.entity.Running then
+            print("[Init] entity is running, restarting")
+            vape.Libraries.entity.stop()
+            vape.Libraries.entity.start()
+        end
+    else
+        print("[Init] entity NOT found, storing for later")
+        -- Stocke la valeur pour le prochain chargement de entity
+        shared.PlayerContainer = path
+    end
+    
+    -- Notification pour l'utilisateur
+    if vape.CreateNotification then
+        vape:CreateNotification('Player Container', 'Set to: ' .. path, 2)
+    end
+    
+    print("[Init] Player Container updated to:", path)
+end
+
+-- Ajoute un bouton "Apply" à côté du champ
+local ApplyButton = general:CreateButton({
+    Name = 'Apply',
+    Function = function()
+        local currentValue = PlayerContainerBox.Object.Text
+        print("[Init] Apply button clicked, current text:", currentValue)
+        local path = type(currentValue) == "string" and currentValue or "Players"
+        applyPlayerContainer(path)
+    end,
+    Tooltip = 'Apply the player container path'
 })
 
 general:CreateButton({
