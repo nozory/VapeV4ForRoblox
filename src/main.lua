@@ -87,6 +87,40 @@ local gui = 'new'--readfile('newvape/profiles/gui.txt')
 if not isfolder('newvape/assets/'..gui) then
 	makefolder('newvape/assets/'..gui)
 end
+
+-- =============================================
+--  CHARGE entity.lua DANS vape.Libraries
+-- =============================================
+if not vape.Libraries then
+	vape.Libraries = {}
+end
+
+if not vape.Libraries.entity then
+	local entityPath = 'newvape/libraries/entity.lua'
+	local entityScript
+	
+	if isfile(entityPath) then
+		entityScript = loadstring(readfile(entityPath), 'entity')
+	else
+		local suc, res = pcall(function()
+			return downloadFile(entityPath)
+		end)
+		if suc and res then
+			entityScript = loadstring(res, 'entity')
+		end
+	end
+	
+	if entityScript then
+		vape.Libraries.entity = entityScript()
+		print("[Main] entity loaded into vape.Libraries")
+	else
+		warn("[Main] Failed to load entity.lua")
+	end
+end
+-- =============================================
+--  FIN CHARGEMENT entity
+-- =============================================
+
 vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
 shared.vape = vape
 
