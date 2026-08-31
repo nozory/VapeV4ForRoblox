@@ -271,22 +271,7 @@ general:CreateToggle({
 	Tooltip = 'Hover a toggle setting to bind it to a key'
 })
 
--- Conteneur personnalisé pour les joueurs
-local PlayerContainerBox = general:CreateTextBox({
-    Name = 'Player Container',
-    Tooltip = 'Path to the player container (e.g., Workspace, Workspace.Players)',
-    Placeholder = 'Players',
-    Default = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or 'Players',
-    Function = function(value)
-        -- Cette fonction est appelée quand l'utilisateur appuie sur Entrée
-        print("[Init] TextBox Function called with value:", value)
-        local path = type(value) == "string" and value or "Players"
-        print("[Init] path after conversion:", path)
-        applyPlayerContainer(path)
-    end
-})
-
--- Fonction qui applique le changement
+-- Conteneur personnalisé pour les joueurs - Version robuste
 local function applyPlayerContainer(path)
     print("[Init] applyPlayerContainer called with:", path)
     
@@ -295,7 +280,6 @@ local function applyPlayerContainer(path)
     
     -- Met à jour la variable partagée
     shared.PlayerContainer = path
-    
     print("[Init] shared.PlayerContainer set to:", shared.PlayerContainer)
     
     -- Essaie de mettre à jour entity si disponible
@@ -311,29 +295,81 @@ local function applyPlayerContainer(path)
         end
     else
         print("[Init] entity NOT found, storing for later")
-        -- Stocke la valeur pour le prochain chargement de entity
-        shared.PlayerContainer = path
     end
     
-    -- Notification pour l'utilisateur
+    -- Notification (si disponible)
     if vape.CreateNotification then
         vape:CreateNotification('Player Container', 'Set to: ' .. path, 2)
     end
-    
-    print("[Init] Player Container updated to:", path)
 end
 
--- Ajoute un bouton "Apply" à côté du champ
-local ApplyButton = general:CreateButton({
-    Name = 'Apply',
-    Function = function()
-        local currentValue = PlayerContainerBox.Object.Text
-        print("[Init] Apply button clicked, current text:", currentValue)
-        local path = type(currentValue) == "string" and currentValue or "Players"
+-- Crée un cadre pour le champ
+local containerFrame = Instance.new("Frame")
+containerFrame.Parent = general.Object
+containerFrame.Size = UDim2.new(1, -20, 0, 30)
+containerFrame.Position = UDim2.new(0, 10, 0, 0) -- Ajuste la position
+containerFrame.BackgroundTransparency = 1
+
+-- Crée un TextLabel pour le nom
+local containerLabel = Instance.new("TextLabel")
+containerLabel.Parent = containerFrame
+containerLabel.Size = UDim2.new(0.5, -5, 1, 0)
+containerLabel.Position = UDim2.new(0, 0, 0, 0)
+containerLabel.BackgroundTransparency = 1
+containerLabel.Font = Enum.Font.SourceSans
+containerLabel.TextSize = 14
+containerLabel.Text = "Player Container"
+containerLabel.TextColor3 = Color3.new(1, 1, 1)
+containerLabel.TextXAlignment = Enum.TextXAlignment.Left
+
+-- Crée le TextBox Roblox standard
+local containerBox = Instance.new("TextBox")
+containerBox.Parent = containerFrame
+containerBox.Size = UDim2.new(0.5, -5, 1, 0)
+containerBox.Position = UDim2.new(0.5, 5, 0, 0)
+containerBox.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+containerBox.BorderSizePixel = 0
+containerBox.Font = Enum.Font.SourceSans
+containerBox.TextSize = 14
+containerBox.Text = shared.PlayerContainer or "Players"
+containerBox.TextColor3 = Color3.new(1, 1, 1)
+containerBox.TextXAlignment = Enum.TextXAlignment.Left
+containerBox.PlaceholderText = "Players"
+
+-- Crée le bouton "Apply" à côté
+local containerApply = Instance.new("TextButton")
+containerApply.Parent = containerFrame
+containerApply.Size = UDim2.new(0, 60, 1, 0)
+containerApply.Position = UDim2.new(1, -65, 0, 0)
+containerApply.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
+containerApply.BorderSizePixel = 0
+containerApply.Font = Enum.Font.SourceSans
+containerApply.TextSize = 14
+containerApply.Text = "Apply"
+containerApply.TextColor3 = Color3.new(1, 1, 1)
+
+-- Quand on clique sur Apply
+containerApply.MouseButton1Click:Connect(function()
+    local value = containerBox.Text
+    print("[Init] Apply clicked, value =", value)
+    local path = (type(value) == "string" and value ~= "") and value or "Players"
+    applyPlayerContainer(path)
+end)
+
+-- Quand on appuie sur Entrée dans le TextBox
+containerBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local value = containerBox.Text
+        print("[Init] FocusLost with Enter, value =", value)
+        local path = (type(value) == "string" and value ~= "") and value or "Players"
         applyPlayerContainer(path)
-    end,
-    Tooltip = 'Apply the player container path'
-})
+    end
+end)
+
+-- Ajoute les références pour le nettoyage
+table.insert(shade2, containerBox)
+table.insert(shade2, containerApply)
+table.insert(text1, containerLabel)
 
 general:CreateButton({
 	Name = 'Reset current profile',
