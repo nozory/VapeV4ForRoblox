@@ -278,14 +278,31 @@ general:CreateTextBox({
     Placeholder = 'Players',
     Default = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or 'Players',
     Function = function(value)
+        -- Force la conversion en chaîne
         local path = type(value) == "string" and value or "Players"
+        
+        -- Met à jour la variable partagée
         shared.PlayerContainer = path
-        if vape.Libraries.entity and vape.Libraries.entity.updateContainer then
-            vape.Libraries.entity.updateContainer(path)
-        elseif vape.Libraries.entity and vape.Libraries.entity.Running then
-            vape.Libraries.entity.stop()
-            vape.Libraries.entity.start()
+        
+        -- Essaie de mettre à jour entity si disponible
+        if vape.Libraries and vape.Libraries.entity then
+            if vape.Libraries.entity.updateContainer then
+                vape.Libraries.entity.updateContainer(path)
+            elseif vape.Libraries.entity.Running then
+                vape.Libraries.entity.stop()
+                vape.Libraries.entity.start()
+            end
         end
+        
+        -- Force un rechargement du système d'entités
+        if vape.Libraries and vape.Libraries.entity and vape.Libraries.entity.Running then
+            vape.Libraries.entity.refresh()
+        end
+        
+        -- Notification pour l'utilisateur
+        vape:CreateNotification('Player Container', 'Set to: ' .. path, 2)
+        
+        print("[Init] Player Container updated to:", path)
     end
 })
 
