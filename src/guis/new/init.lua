@@ -366,10 +366,7 @@ containerBox.FocusLost:Connect(function(enterPressed)
     end
 end)
 
--- Ajoute les références pour le nettoyage
-table.insert(shade2, containerBox)
-table.insert(shade2, containerApply)
-table.insert(text1, containerLabel)
+
 
 general:CreateButton({
 	Name = 'Reset current profile',
