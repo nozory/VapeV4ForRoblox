@@ -41,8 +41,6 @@ local cloneref = cloneref or function(obj)
 	return obj
 end
 local playersService = cloneref(game:GetService('Players'))
--- Conteneur personnalisé pour les joueurs (défini par l'utilisateur)
-local playerContainerPath = tostring(shared.PlayerContainer or "Players")
 local inputService = cloneref(game:GetService('UserInputService'))
 local lplr = playersService.LocalPlayer
 local gameCamera = workspace.CurrentCamera
@@ -51,7 +49,6 @@ local function getMousePosition()
 	if inputService.TouchEnabled then
 		return gameCamera.ViewportSize / 2
 	end
-
 	return inputService.GetMouseLocation(inputService)
 end
 
@@ -61,7 +58,6 @@ end
 
 -- Récupère la liste des joueurs depuis le conteneur personnalisé
 local function getPlayersFromContainer()
-	-- Lit directement la valeur actuelle de shared.PlayerContainer
 	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
 	if path == "Players" then
@@ -97,13 +93,13 @@ local function getPlayersFromContainer()
 		return players
 	end
 
-	warn("[Entity] Container not found:", path)
+	warn("[Entity] Container not found for path:", path)
 	return {}
 end
 
 -- Récupère le conteneur lui-même (pour les événements)
+-- Retourne toujours un objet valide : soit playersService, soit un conteneur avec ChildAdded
 local function getContainer()
-	-- Lit directement la valeur actuelle de shared.PlayerContainer
 	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
 	if path == "Players" then
@@ -120,6 +116,19 @@ local function getContainer()
 		current = current and current:FindFirstChild(part)
 		if not current then break end
 	end
+
+	if not current then
+		warn("[Entity] Container not found for path:", path, "fallback to Players")
+		return playersService
+	end
+
+	-- Vérifier que l'objet a bien ChildAdded/ChildRemoving (services comme Workspace aussi)
+	-- Si ce n'est pas un DataModel, Folder ou Model, on utilise Players
+	if not current:IsA("DataModel") and not current:IsA("Folder") and not current:IsA("Model") then
+		warn("[Entity] Container is not a valid DataModel/Folder/Model, fallback to Players")
+		return playersService
+	end
+
 	return current
 end
 
@@ -132,7 +141,6 @@ local function loopClean(tbl)
 		if type(v) == 'table' then
 			loopClean(v)
 		end
-
 		tbl[i] = nil
 	end
 end
@@ -373,7 +381,6 @@ entitylib.removeEntity = function(char, isLocal)
 			table.clear(entitylib.character.Connections)
 			entitylib.Events.LocalRemoved:Fire(entitylib.character)
 		end
-
 		return
 	end
 
@@ -422,7 +429,6 @@ entitylib.addPlayer = function(plr)
 						entitylib.refreshEntity(entity.Character, entity.Player)
 					end
 				end
-
 				table.clear(cloned)
 			else
 				local entity = entitylib.getEntity(plr)
@@ -439,11 +445,9 @@ entitylib.removePlayer = function(plr)
 		for _, v in entitylib.PlayerConnections[plr] do
 			v:Disconnect()
 		end
-
 		table.clear(entitylib.PlayerConnections[plr])
 		entitylib.PlayerConnections[plr] = nil
 	end
-
 	entitylib.removeEntity(plr)
 end
 
@@ -537,7 +541,6 @@ end
 -- Met à jour le conteneur de joueurs et recharge la liste
 function entitylib.updateContainer(newPath)
 	local path = tostring(newPath or "Players")
-	playerContainerPath = path
 	shared.PlayerContainer = path
 	print("[Entity] updateContainer called with:", newPath, "-> path:", path)
 	if entitylib.Running then
