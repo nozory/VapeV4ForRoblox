@@ -222,7 +222,7 @@ general:CreateToggle({
 							}, nil, component)
 							bind.Object.Position = UDim2.new(1, -40, 0, 5)
 
-							table.insert(settingConnections, bind.Triggered:Connect(function(isDown)
+							table.insert(settingConnections, bind.Triggered:Connect(function(isDown))
 								if bind.Hold then
 									if component.Enabled ~= isDown then
 										if vape.SettingToggleNotifications.Enabled then
@@ -271,102 +271,39 @@ general:CreateToggle({
 	Tooltip = 'Hover a toggle setting to bind it to a key'
 })
 
--- Conteneur personnalisé pour les joueurs - Version robuste
-local function applyPlayerContainer(path)
-    print("[Init] applyPlayerContainer called with:", path)
-    
-    -- Force la conversion en chaîne
-    path = type(path) == "string" and path or "Players"
-    
-    -- Met à jour la variable partagée
-    shared.PlayerContainer = path
-    print("[Init] shared.PlayerContainer set to:", shared.PlayerContainer)
-    
-    -- Essaie de mettre à jour entity si disponible
-    if vape.Libraries and vape.Libraries.entity then
-        print("[Init] entity found")
-        if vape.Libraries.entity.updateContainer then
-            print("[Init] calling entity.updateContainer")
-            vape.Libraries.entity.updateContainer(path)
-        elseif vape.Libraries.entity.Running then
-            print("[Init] entity is running, restarting")
-            vape.Libraries.entity.stop()
-            vape.Libraries.entity.start()
+-- Conteneur personnalisé pour les joueurs (input natif Vape)
+general:CreateTextBox({
+    Name = 'Player Container',
+    Tooltip = 'Path to the player container (e.g., Workspace, Workspace.Players)',
+    Placeholder = 'Players',
+    Default = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or 'Players',
+    Function = function(value)
+        local path = type(value) == "string" and value or "Players"
+        print("[Init] Player Container updated to:", path)
+        shared.PlayerContainer = path
+
+        -- On essaie de mettre à jour entity si elle est chargée
+        if vape.Libraries and vape.Libraries.entity then
+            if vape.Libraries.entity.updateContainer then
+                vape.Libraries.entity.updateContainer(path)
+            elseif vape.Libraries.entity.Running then
+                vape.Libraries.entity.stop()
+                vape.Libraries.entity.start()
+            end
         end
-    else
-        print("[Init] entity NOT found, storing for later")
     end
-    
-    -- Notification (si disponible)
-    if vape.CreateNotification then
-        vape:CreateNotification('Player Container', 'Set to: ' .. path, 2)
+})
+
+-- Force l'application de la valeur quand entity sera chargée
+task.spawn(function()
+    while not (vape.Libraries and vape.Libraries.entity) do
+        task.wait(0.5)
     end
-end
-
--- Crée un cadre pour le champ
-local containerFrame = Instance.new("Frame")
-containerFrame.Parent = general.Object
-containerFrame.Size = UDim2.new(1, -20, 0, 30)
-containerFrame.Position = UDim2.new(0, 10, 0, 0) -- Ajuste la position
-containerFrame.BackgroundTransparency = 1
-
--- Crée un TextLabel pour le nom
-local containerLabel = Instance.new("TextLabel")
-containerLabel.Parent = containerFrame
-containerLabel.Size = UDim2.new(0.5, -5, 1, 0)
-containerLabel.Position = UDim2.new(0, 0, 0, 0)
-containerLabel.BackgroundTransparency = 1
-containerLabel.Font = Enum.Font.SourceSans
-containerLabel.TextSize = 14
-containerLabel.Text = "Player Container"
-containerLabel.TextColor3 = Color3.new(1, 1, 1)
-containerLabel.TextXAlignment = Enum.TextXAlignment.Left
-
--- Crée le TextBox Roblox standard
-local containerBox = Instance.new("TextBox")
-containerBox.Parent = containerFrame
-containerBox.Size = UDim2.new(0.5, -5, 1, 0)
-containerBox.Position = UDim2.new(0.5, 5, 0, 0)
-containerBox.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
-containerBox.BorderSizePixel = 0
-containerBox.Font = Enum.Font.SourceSans
-containerBox.TextSize = 14
-containerBox.Text = shared.PlayerContainer or "Players"
-containerBox.TextColor3 = Color3.new(1, 1, 1)
-containerBox.TextXAlignment = Enum.TextXAlignment.Left
-containerBox.PlaceholderText = "Players"
-
--- Crée le bouton "Apply" à côté
-local containerApply = Instance.new("TextButton")
-containerApply.Parent = containerFrame
-containerApply.Size = UDim2.new(0, 60, 1, 0)
-containerApply.Position = UDim2.new(1, -65, 0, 0)
-containerApply.BackgroundColor3 = Color3.fromRGB(46, 46, 47)
-containerApply.BorderSizePixel = 0
-containerApply.Font = Enum.Font.SourceSans
-containerApply.TextSize = 14
-containerApply.Text = "Apply"
-containerApply.TextColor3 = Color3.new(1, 1, 1)
-
--- Quand on clique sur Apply
-containerApply.MouseButton1Click:Connect(function()
-    local value = containerBox.Text
-    print("[Init] Apply clicked, value =", value)
-    local path = (type(value) == "string" and value ~= "") and value or "Players"
-    applyPlayerContainer(path)
-end)
-
--- Quand on appuie sur Entrée dans le TextBox
-containerBox.FocusLost:Connect(function(enterPressed)
-    if enterPressed then
-        local value = containerBox.Text
-        print("[Init] FocusLost with Enter, value =", value)
-        local path = (type(value) == "string" and value ~= "") and value or "Players"
-        applyPlayerContainer(path)
+    print("[Init] entity now available, applying container:", shared.PlayerContainer)
+    if vape.Libraries.entity.updateContainer then
+        vape.Libraries.entity.updateContainer(shared.PlayerContainer or "Players")
     end
 end)
-
-
 
 general:CreateButton({
 	Name = 'Reset current profile',
@@ -523,23 +460,6 @@ vape.RainbowUpdateSpeed = guipane:CreateSlider({
 	Tooltip = 'Adjusts the update rate of rainbow values',
 	Suffix = 'hz'
 })
-
---[[guipane:CreateDropdown({
-	Name = 'GUI Theme',
-	List = inputService.TouchEnabled and {'new', 'old'} or {'new', 'old', 'rise'},
-	Function = function(val, mouse)
-		if mouse then
-			writefile('newvape/profiles/gui.txt', val)
-			shared.vapereload = true
-			if shared.VapeDeveloper then
-				loadstring(readfile('newvape/loader.lua'), 'loader')()
-			else
-				loadstring(game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true))()
-			end
-		end
-	end,
-	Tooltip = 'new - The newest vape theme to since v4.05\nold - The vape theme pre v4.05\nrise - Rise 6.0'
-})]]
 
 guipane:CreateDropdown({
 	Name = 'Search bar style',
