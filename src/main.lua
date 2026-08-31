@@ -2,14 +2,22 @@ repeat task.wait() until game:IsLoaded()
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 if shared.vape then shared.vape:Uninject() end
 
-local vape
+-- Créer vape comme table vide au départ
+local vape = {}
+
 local loadstring = function(...)
 	local res, err = loadstring(...)
 	if err and vape then
-		vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert')
+		-- vape peut ne pas encore avoir CreateNotification, on utilise warn en fallback
+		if vape.CreateNotification then
+			vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert')
+		else
+			warn('[Vape] Failed to load : '..err)
+		end
 	end
 	return res
 end
+
 local queue_on_teleport = queue_on_teleport or function() end
 local isfile = isfile or function(file)
 	local suc, res = pcall(function()
@@ -89,7 +97,14 @@ if not isfolder('newvape/assets/'..gui) then
 end
 
 -- =============================================
+--  Charge la GUI et remplace vape par l'objet réel
+-- =============================================
+vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
+shared.vape = vape
+
+-- =============================================
 --  CHARGE entity.lua DANS vape.Libraries
+--  (maintenant que vape existe vraiment)
 -- =============================================
 if not vape.Libraries then
 	vape.Libraries = {}
@@ -120,9 +135,6 @@ end
 -- =============================================
 --  FIN CHARGEMENT entity
 -- =============================================
-
-vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
-shared.vape = vape
 
 if not shared.VapeIndependent then
 	loadstring(downloadFile('newvape/games/universal.lua'), 'universal')()
