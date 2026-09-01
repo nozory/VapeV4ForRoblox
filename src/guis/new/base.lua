@@ -1,782 +1,943 @@
-local vape = {
-	ActiveBinds = {},
-	Categories = {},
-	GUIColor = {
-		Hue = 0.46,
-		Sat = 0.96,
-		Value = 0.52
-	},
-	HeldKeybinds = {},
-	Loaded = false,
-	Libraries = {},
-	Modules = {},
-	Place = game.PlaceId,
-	Profile = 'default',
-	RainbowSliders = {},
-	Settings = {},
-	SettingToggleNotifications = {},
-	ThreadFix = setthreadidentity and true or false,
-	ToggleNotifications = {},
-	Version = '4.22',
-	Windows = {}
-}
+local oldLoadstring = loadstring
+local loadstring = function(...)
+	local res, err = oldLoadstring(...)
+	if err and vape then
+		vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert')
+	end
+	return res
+end
 
+local isfile = isfile or function(file)
+	local suc, res = pcall(function()
+		return readfile(file)
+	end)
+	return suc and res ~= nil and res ~= ''
+end
+local function downloadFile(path, func)
+	if not isfile(path) then
+		local suc, res = pcall(function()
+			return game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
+		end)
+		if not suc or res == '404: Not Found' then
+			error(res)
+		end
+		if path:find('.lua') then
+			res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
+		end
+		writefile(path, res)
+	end
+	return (func or readfile)(path)
+end
 local run = function(func)
 	func()
 end
+local queue_on_teleport = queue_on_teleport or function() end
 local cloneref = cloneref or function(obj)
 	return obj
 end
-local tweenService = cloneref(game:GetService('TweenService'))
-local inputService = cloneref(game:GetService('UserInputService'))
-local textService = cloneref(game:GetService('TextService'))
-local guiService = cloneref(game:GetService('GuiService'))
+
+local playersService = cloneref(game:GetService('Players'))
+local replicatedStorage = cloneref(game:GetService('ReplicatedStorage'))
 local runService = cloneref(game:GetService('RunService'))
+local inputService = cloneref(game:GetService('UserInputService'))
+local tweenService = cloneref(game:GetService('TweenService'))
+local lightingService = cloneref(game:GetService('Lighting'))
+local marketplaceService = cloneref(game:GetService('MarketplaceService'))
+local proxService = cloneref(game:GetService('ProximityPromptService'))
+local teleportService = cloneref(game:GetService('TeleportService'))
 local httpService = cloneref(game:GetService('HttpService'))
+local guiService = cloneref(game:GetService('GuiService'))
+local groupService = cloneref(game:GetService('GroupService'))
+local textChatService = cloneref(game:GetService('TextChatService'))
+local contextService = cloneref(game:GetService('ContextActionService'))
+local assetService = cloneref(game:GetService('AssetService'))
+local coreGui = cloneref(game:GetService('CoreGui'))
+local stats = cloneref(game:GetService('Stats'))
 
-local fontsize = Instance.new('GetTextBoundsParams')
-fontsize.Width = math.huge
-local notifications
-local getvapeasset
-local components
-local clickgui
-local scaledgui
-local toolblur
-local tooltip
-local TextGUI
-local scale = {Scale = 1}
-local gui
-
-local isfile = isfile or function(file)
-	local success, data = pcall(function()
-		return readfile(file)
-	end)
-
-	return success and data ~= nil and data ~= ''
+local isnetworkowner = identifyexecutor and table.find({'AWP', 'Nihon'}, ({identifyexecutor()})[1]) and isnetworkowner or function()
+	return true
 end
+local gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
+local lplr = playersService.LocalPlayer
 
-local function loadJson(path)
-	local success, data = pcall(function()
-		return httpService:JSONDecode(readfile(path))
-	end)
+local vape = shared.vape
+local tween = vape.Libraries.tween
+local targetinfo = vape.Libraries.targetinfo
+local getfontbounds = vape.Libraries.getfontbounds
+local getvapeasset = vape.Libraries.getvapeasset
 
-	return success and type(data) == 'table' and data or nil
-end
+local TargetStrafeVector, SpiderShift, WaypointFolder
+local Spider = {Enabled = false}
+local Phase = {Enabled = false}
 
---Libraries
-
-local function addBlur(parent, notif, old)
-	local blur
-	if old then
-		blur = Instance.new('ImageLabel')
-		blur.Name = 'Blur'
-		blur.Size = UDim2.new(1, 89, 1, 52)
-		blur.Position = UDim2.fromOffset(-48, -31)
-		blur.BackgroundTransparency = 1
-		blur.Image = getvapeasset('newvape/assets/new/'..(notif and 'blurnoti' or 'blur')..'.png')
-		blur.ScaleType = Enum.ScaleType.Slice
-		blur.SliceCenter = Rect.new(52, 31, 261, 502)
-		blur.Parent = parent
-	else
-		blur = Instance.new('UIShadow')
-		blur.BlurRadius = UDim.new(0, 13)
-		blur.Transparency = 0.25
-		blur.Parent = parent
-	end
-
+local function addBlur(parent)
+	local blur = Instance.new('ImageLabel')
+	blur.Name = 'Blur'
+	blur.Size = UDim2.new(1, 89, 1, 52)
+	blur.Position = UDim2.fromOffset(-48, -31)
+	blur.BackgroundTransparency = 1
+	blur.Image = getvapeasset('newvape/assets/new/blur.png')
+	blur.ScaleType = Enum.ScaleType.Slice
+	blur.SliceCenter = Rect.new(52, 31, 261, 502)
+	blur.Parent = parent
 	return blur
 end
 
-local function addCorner(parent, radius)
-	local corner = Instance.new('UICorner')
-	corner.CornerRadius = radius or UDim.new(0, 5)
-	corner.Parent = parent
-
-	return corner
+local function calculateMoveVector(vec)
+	local c, s
+	local _, _, _, R00, R01, R02, _, _, R12, _, _, R22 = gameCamera.CFrame:GetComponents()
+	if R12 < 1 and R12 > -1 then
+		c = R22
+		s = R02
+	else
+		c = R00
+		s = -R01 * math.sign(R12)
+	end
+	vec = Vector3.new((c * vec.X + s * vec.Z), 0, (c * vec.Z - s * vec.X)) / math.sqrt(c * c + s * s)
+	return vec.Unit == vec.Unit and vec.Unit or Vector3.zero
 end
 
-local function addCloseButton(parent, mini, offset)
-	local close = Instance.new('ImageButton')
-	close.AutoButtonColor = false
-	close.BackgroundColor3 = Color3.new(1, 1, 1)
-	close.BackgroundTransparency = 1
-	close.Image = getvapeasset('newvape/assets/new/'..(mini and 'closemini' or 'close')..'.png')
-	close.ImageColor3 = color.Light(uipallet.Text, 0.2)
-	close.ImageTransparency = 0.5
-	close.Name = 'Close'
-	close.Position = offset or (mini and UDim2.new(1, -28, 0, 11) or UDim2.new(1, -35, 0, 9))
-	close.Size = mini and UDim2.fromOffset(20, 20) or UDim2.fromOffset(24, 24)
-	close.Parent = parent
-	addCorner(close, UDim.new(1, 0))
-
-	close.MouseEnter:Connect(function()
-		close.ImageTransparency = 0.3
-		tween:Tween(close, uipallet.Tween, {
-			BackgroundTransparency = 0.6
-		})
-	end)
-
-	close.MouseLeave:Connect(function()
-		close.ImageTransparency = 0.5
-		tween:Tween(close, uipallet.Tween, {
-			BackgroundTransparency = 1
-		})
-	end)
-
-	return close
-end
-
-local function addDragHandler(gui, window)
-	gui.InputBegan:Connect(function(input)
-		if window and not window.Visible then return end
-
-		if
-			(input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch)
-			and (input.Position.Y - gui.AbsolutePosition.Y < 40 or window)
-		then
-			local dragPosition = Vector2.new(
-				gui.AbsolutePosition.X - input.Position.X,
-				gui.AbsolutePosition.Y - input.Position.Y + guiService:GetGuiInset().Y
-			) / scale.Scale
-
-			local releaseConnection
-			local moveConnection = inputService.InputChanged:Connect(function(newInput)
-				if newInput.UserInputType == (input.UserInputType == Enum.UserInputType.MouseButton1 and Enum.UserInputType.MouseMovement or Enum.UserInputType.Touch) then
-					local position = newInput.Position
-					if inputService:IsKeyDown(Enum.KeyCode.LeftShift) then
-						dragPosition = (dragPosition // 3) * 3
-						position = (position // 3) * 3
-					end
-
-					gui.Position = UDim2.fromOffset((position.X / scale.Scale) + dragPosition.X, (position.Y / scale.Scale) + dragPosition.Y)
-				end
-			end)
-
-			releaseConnection = input.Changed:Connect(function()
-				if input.UserInputState == Enum.UserInputState.End then
-					moveConnection:Disconnect()
-					releaseConnection:Disconnect()
-				end
-			end)
+local function isFriend(plr, recolor)
+	if vape.Categories.Friends.Options['Use friends'].Enabled then
+		local friend = table.find(vape.Categories.Friends.ListEnabled, plr.Name) and true
+		if recolor then
+			friend = friend and vape.Categories.Friends.Options['Recolor visuals'].Enabled
 		end
-	end)
+		return friend
+	end
+	return nil
 end
 
-local function addMaid(obj)
-	obj.Connections = {}
+local function isTarget(plr)
+	return table.find(vape.Categories.Targets.ListEnabled, plr.Name) and true
+end
 
-	function obj:Clean(callback)
-		if typeof(callback) == 'Instance' then
-			table.insert(self.Connections, {
-				Disconnect = function()
-					callback:ClearAllChildren()
-					callback:Destroy()
-				end
-			})
-		elseif type(callback) == 'thread' then
-			table.insert(self.Connections, {
-				Disconnect = function()
-					if coroutine.status(callback) ~= 'dead' then
-						task.cancel(callback)
-					end
-				end
-			})
-		elseif type(callback) == 'function' then
-			table.insert(self.Connections, {
-				Disconnect = callback
-			})
+local function canClick()
+	local mousepos = (inputService:GetMouseLocation() - guiService:GetGuiInset())
+	for _, v in lplr.PlayerGui:GetGuiObjectsAtPosition(mousepos.X, mousepos.Y) do
+		local obj = v:FindFirstAncestorOfClass('ScreenGui')
+		if v.Active and v.Visible and obj and obj.Enabled then
+			return false
+		end
+	end
+	for _, v in coreGui:GetGuiObjectsAtPosition(mousepos.X, mousepos.Y) do
+		local obj = v:FindFirstAncestorOfClass('ScreenGui')
+		if v.Active and v.Visible and obj and obj.Enabled then
+			return false
+		end
+	end
+	return (not vape.gui.ScaledGui.ClickGui.Visible) and (not inputService:GetFocusedTextBox())
+end
+
+local function getTableSize(tab)
+	local ind = 0
+	for _ in tab do ind += 1 end
+	return ind
+end
+
+local function getTool()
+	return lplr.Character and lplr.Character:FindFirstChildWhichIsA('Tool', true) or nil
+end
+
+local function notif(...)
+	return vape:CreateNotification(...)
+end
+
+local function removeTags(str)
+	str = str:gsub('<br%s*/>', '\n')
+	return (str:gsub('<[^<>]->', ''))
+end
+
+local function rakNetCheck(module)
+	if not (raknet and raknet.add_send_hook and pcall(raknet.add_send_hook, function() end)) then
+		notif(module, 'This feature requires raknet! (risky feature, please do not use on mains.)', 10, 'warning')
+		return false
+	end
+
+	return true
+end
+
+local visited, attempted, tpSwitch = {}, {}, false
+local cacheExpire, cache = tick()
+local function serverHop(pointer, filter)
+	visited = shared.vapeserverhoplist and shared.vapeserverhoplist:split('/') or {}
+	if not table.find(visited, game.JobId) then
+		table.insert(visited, game.JobId)
+	end
+	if not pointer then
+		notif('Vape', 'Searching for an available server.', 2)
+	end
+
+	local suc, httpdata = pcall(function()
+		return cacheExpire < tick() and game:HttpGet('https://games.roblox.com/v1/games/'..game.PlaceId..'/servers/Public?sortOrder='..(filter == 'Ascending' and 1 or 2)..'&excludeFullGames=true&limit=100'..(pointer and '&cursor='..pointer or '')) or cache
+	end)
+	local data = suc and httpService:JSONDecode(httpdata) or nil
+	if data and data.data then
+		for _, v in data.data do
+			if tonumber(v.playing) < playersService.MaxPlayers and not table.find(visited, v.id) and not table.find(attempted, v.id) then
+				cacheExpire, cache = tick() + 60, httpdata
+				table.insert(attempted, v.id)
+
+				notif('Vape', 'Found! Teleporting.', 5)
+				teleportService:TeleportToPlaceInstance(game.PlaceId, v.id)
+				return
+			end
+		end
+
+		if data.nextPageCursor then
+			serverHop(data.nextPageCursor, filter)
 		else
-			table.insert(self.Connections, callback)
+			notif('Vape', 'Failed to find an available server.', 5, 'warning')
 		end
+	else
+		notif('Vape', 'Failed to grab servers. ('..(data and data.errors[1].message or 'no data')..')', 5, 'warning')
 	end
 end
 
-local function addTooltip(gui, text, customText, visCheck)
-	if not text then return end
-
-	local function tooltipMoved(x, y)
-		if visCheck and visCheck() then
-			return
-		end
-
-		local isRight = x + 16 + tooltip.Size.X.Offset > (scale.Scale * 1920)
-		tooltip.Position = UDim2.fromOffset(
-			(isRight and x - (tooltip.Size.X.Offset * scale.Scale) - 16 or x + 16) / scale.Scale,
-			((y + 11) - (tooltip.Size.Y.Offset / 2)) / scale.Scale
-		)
-
-		tooltip.Visible = toolblur.Enabled
+vape:Clean(lplr.OnTeleport:Connect(function()
+	if not tpSwitch then
+		tpSwitch = true
+		queue_on_teleport("shared.vapeserverhoplist = '"..table.concat(visited, '/').."'\nshared.vapeserverhopprevious = '"..game.JobId.."'")
 	end
+end))
 
-	local function callback()
-		local newText = customText()
-		tooltip.Text = newText
-		local tooltipSize = getfontbounds(tooltip.ContentText, tooltip.TextSize, uipallet.Font)
-		tooltip.Size = UDim2.fromOffset(tooltipSize.X + 10, tooltipSize.Y + 10)
-	end
-
-	gui.MouseEnter:Connect(function(x, y)
-		if visCheck and visCheck() then
-			return
-		end
-
-		tooltip.Text = text
-		local tooltipSize = getfontbounds(tooltip.ContentText, tooltip.TextSize, uipallet.Font)
-		tooltip.Size = UDim2.fromOffset(tooltipSize.X + 10, tooltipSize.Y + 10)
-		tooltipMoved(x, y)
-
-		if customText then
-			vape.CurrentTooltip = callback
-			callback()
-		end
-	end)
-	gui.MouseMoved:Connect(tooltipMoved)
-	gui.MouseLeave:Connect(function()
-		if visCheck and visCheck() then
-			return
-		end
-
-		tooltip.Visible = false
-		vape.CurrentTooltip = nil
-	end)
-end
-
-local function createSignal()
-	local signal = {
-		Connections = {}
-	}
-
-	function signal:Connect(callback)
-		table.insert(self.Connections, callback)
-
-		return {
-			Disconnect = function()
-				local index = table.find(signal.Connections, callback)
-				if index then
-					table.remove(signal.Connections, index)
+local frictionTable, oldfrict, entitylib = {}, {}
+local function updateVelocity()
+	if getTableSize(frictionTable) > 0 then
+		if entitylib.isAlive then
+			for _, part in entitylib.character.Character:GetChildren() do
+				if part:IsA('BasePart') and part.Name ~= 'HumanoidRootPart' and not oldfrict[part] then
+					oldfrict[part] = part.CustomPhysicalProperties or 'none'
+					part.CustomPhysicalProperties = PhysicalProperties.new(0.0001, 0.2, 0.5, 1, 1)
 				end
 			end
+		end
+	else
+		for part, data in oldfrict do
+			part.CustomPhysicalProperties = data ~= 'none' and data or nil
+		end
+
+		table.clear(oldfrict)
+	end
+end
+
+local function motorMove(target, cf)
+	local part = Instance.new('Part')
+	part.Anchored = true
+	part.Parent = workspace
+	local motor = Instance.new('Motor6D')
+	motor.Part0 = target
+	motor.Part1 = part
+	motor.C1 = cf
+	motor.Parent = part
+	task.delay(0, part.Destroy, part)
+end
+
+local hash = loadstring(downloadFile('newvape/libraries/hash.lua'), 'hash')()
+local prediction = loadstring(downloadFile('newvape/libraries/prediction.lua'), 'prediction')()
+entitylib = loadstring(downloadFile('newvape/libraries/entity.lua'), 'entitylibrary')()
+local whitelist = {
+	alreadychecked = {},
+	customtags = {},
+	tagcallback = {},
+	data = {WhitelistedUsers = {}},
+	hashes = setmetatable({}, {
+		__index = function(_, data)
+			return hash and hash.sha512(data..'SelfReport') or ''
+		end
+	}),
+	hooked = false,
+	loaded = false,
+	localprio = 0,
+	said = {}
+}
+vape.Libraries.entity = entitylib
+vape.Libraries.whitelist = whitelist
+vape.Libraries.prediction = prediction
+vape.Libraries.hash = hash
+vape.Libraries.auraanims = {
+	Normal = {
+		{CFrame = CFrame.new(-0.17, -0.14, -0.12) * CFrame.Angles(math.rad(-53), math.rad(50), math.rad(-64)), Time = 0.1},
+		{CFrame = CFrame.new(-0.55, -0.59, -0.1) * CFrame.Angles(math.rad(-161), math.rad(54), math.rad(-6)), Time = 0.08},
+		{CFrame = CFrame.new(-0.62, -0.68, -0.07) * CFrame.Angles(math.rad(-167), math.rad(47), math.rad(-1)), Time = 0.03},
+		{CFrame = CFrame.new(-0.56, -0.86, 0.23) * CFrame.Angles(math.rad(-167), math.rad(49), math.rad(-1)), Time = 0.03}
+	},
+	Random = {},
+	['Horizontal Spin'] = {
+		{CFrame = CFrame.Angles(math.rad(-10), math.rad(-90), math.rad(-80)), Time = 0.12},
+		{CFrame = CFrame.Angles(math.rad(-10), math.rad(180), math.rad(-80)), Time = 0.12},
+		{CFrame = CFrame.Angles(math.rad(-10), math.rad(90), math.rad(-80)), Time = 0.12},
+		{CFrame = CFrame.Angles(math.rad(-10), 0, math.rad(-80)), Time = 0.12}
+	},
+	['Vertical Spin'] = {
+		{CFrame = CFrame.Angles(math.rad(-90), 0, math.rad(15)), Time = 0.12},
+		{CFrame = CFrame.Angles(math.rad(180), 0, math.rad(15)), Time = 0.12},
+		{CFrame = CFrame.Angles(math.rad(90), 0, math.rad(15)), Time = 0.12},
+		{CFrame = CFrame.Angles(0, 0, math.rad(15)), Time = 0.12}
+	},
+	Exhibition = {
+		{CFrame = CFrame.new(0.69, -0.7, 0.6) * CFrame.Angles(math.rad(-30), math.rad(50), math.rad(-90)), Time = 0.1},
+		{CFrame = CFrame.new(0.7, -0.71, 0.59) * CFrame.Angles(math.rad(-84), math.rad(50), math.rad(-38)), Time = 0.2}
+	},
+	['Exhibition Old'] = {
+		{CFrame = CFrame.new(0.69, -0.7, 0.6) * CFrame.Angles(math.rad(-30), math.rad(50), math.rad(-90)), Time = 0.15},
+		{CFrame = CFrame.new(0.69, -0.7, 0.6) * CFrame.Angles(math.rad(-30), math.rad(50), math.rad(-90)), Time = 0.05},
+		{CFrame = CFrame.new(0.7, -0.71, 0.59) * CFrame.Angles(math.rad(-84), math.rad(50), math.rad(-38)), Time = 0.1},
+		{CFrame = CFrame.new(0.7, -0.71, 0.59) * CFrame.Angles(math.rad(-84), math.rad(50), math.rad(-38)), Time = 0.05},
+		{CFrame = CFrame.new(0.63, -0.1, 1.37) * CFrame.Angles(math.rad(-84), math.rad(50), math.rad(-38)), Time = 0.15}
+	}
+}
+
+local SpeedMethods
+local SpeedMethodList = {'Velocity'}
+SpeedMethods = {
+	Velocity = function(options, moveDirection)
+		local root = entitylib.character.RootPart
+		root.AssemblyLinearVelocity = (moveDirection * options.Value.Value) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+	end,
+	Impulse = function(options, moveDirection)
+		local root = entitylib.character.RootPart
+		local diff = ((moveDirection * options.Value.Value) - root.AssemblyLinearVelocity) * Vector3.new(1, 0, 1)
+		if diff.Magnitude > (moveDirection == Vector3.zero and 10 or 2) then
+			root:ApplyImpulse(diff * root.AssemblyMass)
+		end
+	end,
+	CFrame = function(options, moveDirection, dt)
+		local root = entitylib.character.RootPart
+		local dest = (moveDirection * math.max(options.Value.Value - entitylib.character.Humanoid.WalkSpeed, 0) * dt)
+		if options.WallCheck.Enabled then
+			options.rayCheck.FilterDescendantsInstances = {lplr.Character, gameCamera}
+			options.rayCheck.CollisionGroup = root.CollisionGroup
+			local ray = workspace:Raycast(root.Position, dest, options.rayCheck)
+			if ray then
+				dest = ((ray.Position + ray.Normal) - root.Position)
+			end
+		end
+		root.CFrame += dest
+	end,
+	TP = function(options, moveDirection)
+		if options.TPTiming < os.clock() then
+			options.TPTiming = os.clock() + options.TPFrequency.Value
+			SpeedMethods.CFrame(options, moveDirection, 1)
+		end
+	end,
+	WalkSpeed = function(options)
+		if not options.WalkSpeed then options.WalkSpeed = entitylib.character.Humanoid.WalkSpeed end
+		entitylib.character.Humanoid.WalkSpeed = options.Value.Value
+	end,
+	Pulse = function(options, moveDirection)
+		local root = entitylib.character.RootPart
+		local dt = math.max(options.Value.Value - entitylib.character.Humanoid.WalkSpeed, 0)
+		dt = dt * (1 - math.min((os.clock() % (options.PulseLength.Value + options.PulseDelay.Value)) / options.PulseLength.Value, 1))
+		root.AssemblyLinearVelocity = (moveDirection * (entitylib.character.Humanoid.WalkSpeed + dt)) + Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+	end
+}
+
+for name in SpeedMethods do
+	if not table.find(SpeedMethodList, name) then
+		table.insert(SpeedMethodList, name)
+	end
+end
+
+run(function()
+	entitylib.getUpdateConnections = function(entity)
+		local hum = entity.Humanoid
+		return {
+			hum:GetPropertyChangedSignal('Health'),
+			hum:GetPropertyChangedSignal('MaxHealth'),
+			{
+				Connect = function()
+					entity.Friend = entity.Player and isFriend(entity.Player) or nil
+					entity.Target = entity.Player and isTarget(entity.Player) or nil
+					return {
+						Disconnect = function() end
+					}
+				end
+			}
 		}
 	end
+	
+	entitylib.targetCheck = function(entity)
+		if entity.TeamCheck then
+			return entity:TeamCheck()
+		end
+		if entity.NPC then return true end
+		if isFriend(entity.Player) then return false end
+		if not select(2, whitelist:get(entity.Player)) then return false end
+		if vape.Settings.Modules.Options['Teams by server'].Enabled then
+			if not lplr.Team then return true end
+			local playerTeam = entity.Player and entity.Player.Team
+			if not playerTeam then return true end
+			if playerTeam ~= lplr.Team then return true end
+			return #playerTeam:GetPlayers() == #playersService:GetPlayers()
+		end
+		return true
+	end
 
-	function signal:Fire(...)
-		for _, callback in self.Connections do
-			task.spawn(callback, ...)
+	entitylib.getEntityColor = function(entity)
+    entity = entity.Player
+    if not (entity and vape.Settings.Modules.Options['Use team color'].Enabled) then return end
+    if isFriend(entity, true) then
+        return Color3.fromHSV(vape.Categories.Friends.Options['Friends color'].Hue, vape.Categories.Friends.Options['Friends color'].Sat, vape.Categories.Friends.Options['Friends color'].Value)
+    end
+    if entity and entity.TeamColor then
+        return tostring(entity.TeamColor) ~= 'White' and entity.TeamColor.Color or nil
+    end
+    return nil
+	end
+
+	vape:Clean(function()
+		entitylib.kill()
+		entitylib = nil
+	end)
+	vape:Clean(vape.Categories.Friends.Update.Event:Connect(function() entitylib.refresh() end))
+	vape:Clean(vape.Categories.Targets.Update.Event:Connect(function() entitylib.refresh() end))
+	vape:Clean(entitylib.Events.LocalAdded:Connect(updateVelocity))
+	vape:Clean(workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
+		gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
+	end))
+end)
+
+run(function()
+	function whitelist:get(plr)
+		local plrstr = self.hashes[plr.Name..plr.UserId]
+		for _, v in self.data.WhitelistedUsers do
+			if v.hash == plrstr then
+				return v.level, v.attackable or whitelist.localprio >= v.level, v.tags
+			end
+		end
+
+		return 0, true
+	end
+
+	function whitelist:isingame()
+		for _, v in playersService:GetPlayers() do
+			if self:get(v) ~= 0 then
+				return true
+			end
+		end
+
+		return false
+	end
+
+	function whitelist:tag(plr, text, rich)
+		local plrtag, newtag = table.clone(select(3, self:get(plr)) or self.customtags[plr.Name] or {}), ''
+		for _, v in self.tagcallback do
+			v(plr, plrtag, rich)
+		end
+
+		if not text then
+			return plrtag
+		end
+
+		for _, v in plrtag do
+			newtag = newtag..(rich and v.color and '<font color="#'..v.color:ToHex()..'">['..v.text..']</font>' or '['..removeTags(v.text)..']')..' '
+		end
+
+		return newtag
+	end
+
+	function whitelist:getplayer(arg, plr)
+		if arg == 'default' and self.localprio == 0 then
+			return true
+		end
+
+		if arg == 'private' and self.localprio == 1 then
+			return true
+		end
+
+		if arg == 'others' and plr ~= lplr then
+			return true
+		end
+
+		if arg and lplr.Name:lower():sub(1, arg:len()) == arg:lower() then
+			return true
+		end
+
+		return false
+	end
+
+	local olduninject
+	function whitelist:playeradded(v, joined)
+		if self:get(v) ~= 0 then
+			if self.alreadychecked[v.UserId] then return end
+			self.alreadychecked[v.UserId] = true
+			self:hook()
+
+			if self.localprio == 0 then
+				olduninject = vape.Uninject
+				vape.Uninject = function()
+					notif('Vape', 'No escaping the private members :)', 10)
+				end
+			end
 		end
 	end
 
-	return signal
-end
+	function whitelist:process(msg, plr)
+		if self.localprio < self:get(plr) or plr == lplr then
+			local args = msg:split(' ')
+			table.remove(args, 1)
 
-local function checkKeybinds(compare, target, key)
-	if type(target) == 'table' then
-		if table.find(target, key) then
-			for _, key in target do
-				if not table.find(compare, key) then
-					return false
+			if self:getplayer(args[1], plr) then
+				table.remove(args, 1)
+				for cmd, func in self.commands do
+					if msg:sub(1, cmd:len() + 1):lower() == ';'..cmd:lower() then
+						func(args, plr)
+						return true
+					end
+				end
+			end
+		end
+
+		return false
+	end
+
+	function whitelist:newchat(obj, plr, skip)
+		obj.PrefixText = self:tag(plr, true, true)..(obj.PrefixText or '')
+
+		if not skip and self:process(obj.Text, plr) then
+			obj.Visible = false
+		end
+	end
+
+	function whitelist:oldchat(func)
+		local msgtable, oldchat = debug.getupvalue(func, 3)
+		if typeof(msgtable) == 'table' and msgtable.CurrentChannel then
+			whitelist.oldchattable = msgtable
+		end
+
+		oldchat = hookfunction(func, function(data, ...)
+			local plr = playersService:GetPlayerByUserId(data.SpeakerUserId)
+			if plr then
+				data.ExtraData.Tags = data.ExtraData.Tags or {}
+				for _, v in self:tag(plr) do
+					table.insert(data.ExtraData.Tags, {TagText = v.text, TagColor = v.color})
+				end
+
+				if data.Message and self:process(data.Message, plr) then
+					data.Message = ''
 				end
 			end
 
-			return true
+			return oldchat(data, ...)
+		end)
+
+		vape:Clean(function()
+			hookfunction(func, oldchat)
+		end)
+	end
+
+	function whitelist:hook()
+		if self.hooked then return end
+		self.hooked = true
+
+		if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+			if getcallbackvalue and restorefunction and hookfunction then
+				local old
+				task.spawn(function()
+					vape:Clean(function()
+						if old then
+							restorefunction(old)
+							old = nil
+						end
+					end)
+
+					repeat
+						local current = getcallbackvalue(textChatService, 'OnIncomingMessage')
+
+						if old ~= current and current then
+							if old then
+								restorefunction(old)
+							end
+
+							local hook
+							hook = hookfunction(current, function(...)
+								local msg = ...
+								local data = hook(...)
+								local plr = msg.TextSource and playersService:GetPlayerByUserId(msg.TextSource.UserId)
+
+								if plr then
+									if not (data and data:IsA('TextChatMessageProperties') and data.PrefixText ~= '') then
+										data = Instance.new('TextChatMessageProperties')
+										data.PrefixText = msg.PrefixText
+										data.Text = msg.Text
+									end
+
+									self:newchat(data, plr, msg.Status ~= Enum.TextChatMessageStatus.Success)
+								end
+
+								return data
+							end)
+
+							old = current
+						end
+
+						task.wait(0.1)
+					until vape.Loaded == nil
+				end)
+			end
+		elseif replicatedStorage:FindFirstChild('DefaultChatSystemChatEvents') then
+			pcall(function()
+				for _, v in getconnections(replicatedStorage.DefaultChatSystemChatEvents.OnNewMessage.OnClientEvent) do
+					if v.Function and table.find(debug.getconstants(v.Function), 'UpdateMessagePostedInChannel') then
+						whitelist:oldchat(v.Function)
+						break
+					end
+				end
+
+				for _, v in getconnections(replicatedStorage.DefaultChatSystemChatEvents.OnMessageDoneFiltering.OnClientEvent) do
+					if v.Function and table.find(debug.getconstants(v.Function), 'UpdateMessageFiltered') then
+						whitelist:oldchat(v.Function)
+						break
+					end
+				end
+			end)
 		end
 	end
 
-	return false
-end
+	function whitelist:announce(text)
+		local success, sendToast = pcall(function()
+			local getAppIdHook = getrenv().require(game:GetService('CorePackages').Workspace.Packages._Workspace.AppCommonLib.AppCommonLib.Release.getNumericalApplicationId)
+			local messageBusHook = getrenv().require(game:GetService('CorePackages').Workspace.Packages._Workspace.MessageBus.MessageBus.MessageBus)
+			messageBusHook.getMessageId = function() end
+			hookfunction(getAppIdHook, function()
+				return 0
+			end)
 
-local function getTableSize(dict)
-	local size = 0
-	for _ in dict do
-		size += 1
-	end
+			local localizationService = game:GetService('LocalizationService')
+			local root = game:GetService('CorePackages').Workspace.Packages._Index.NotificationModalsManager.NotificationModalsManager
+			local reactBlox = getrenv().require(root.ReactRoblox)
+			local react = getrenv().require(root.React)
+			local UIBlox = getrenv().require(root.UIBlox)
+			UIBlox.init(getrenv().require(game:GetService('CorePackages').Packages._Index.UIBlox.UIBlox.UIBloxDefaultConfig))
+			local toastDialog = UIBlox.App.Dialog.Toast
+			local localization = getrenv().require(root.InExperienceLocales).Localization
+			local localProvider = getrenv().require(root.Localization).LocalizationProvider
+			local defaultTheme = getrenv().require(root.Style).StyleProviderWithDefaultTheme
+			local renderGui = nil
 
-	return size
-end
+			local function createToast(content)
+				return react.createElement(localProvider, {
+					localization = localization.new(localizationService.RobloxLocaleId)
+				}, {
+					StyleProvider = react.createElement(defaultTheme, {}, {
+						ToastWrapper = react.createElement('ScreenGui', {
+							IgnoreGuiInset = true,
+							ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+							ResetOnSpawn = false,
+							DisplayOrder = 12
+						}, {
+							Toast = react.createElement(toastDialog, {
+								duration = 20,
+								toastContent = content
+							})
+						})
+					})
+				})
+			end
 
-local function loopClean(obj)
-	for index, value in obj do
-		if type(value) == 'table' then
-			loopClean(value)
-		end
+			return function(content)
+				if not renderGui then
+					local folder = Instance.new('Folder')
+					folder.Name = 'UIBloxToast'
+					folder.Parent = game:GetService('CoreGui')
+					folder.ChildRemoved:Once(function()
+						folder:Destroy()
+						renderGui = nil
+					end)
 
-		obj[index] = nil
-	end
-end
+					renderGui = reactBlox.createRoot(folder)
+				end
 
-local function randomString()
-	local array = {}
-	for i = 1, math.random(10, 100) do
-		array[i] = string.char(math.random(32, 126))
-	end
+				renderGui:render(react.createElement(createToast, content))
+			end
+		end)
 
-	return table.concat(array)
-end
-
-local function removeTags(text)
-	text = text:gsub('<br%s*/>', '\n')
-	return text:gsub('<[^<>]->', '')
-end
-
-function vape:BlurCheck()
-	if self.ThreadFix then
-		setthreadidentity(8)
-		runService:SetRobloxGuiFocused((clickgui.Visible or guiService:GetErrorType() ~= Enum.ConnectionError.OK) and self.Blur.Enabled)
-	end
-end
-
-function vape:CreateCategory(props)
-	return components.Category(props)
-end
-
-function vape:CreateCategoryList(props)
-	return components.CategoryList(props)
-end
-
-function vape:CreateNotification(title, text, duration, type)
-	if not self.Notifications.Enabled then
-		return
-	end
-
-	task.delay(0, function()
-		if self.ThreadFix then
-			setthreadidentity(8)
-		end
-
-		local index = #notifications:GetChildren() + 1
-		local notification = Instance.new('ImageLabel')
-		notification.BackgroundTransparency = 1
-		notification.Position = UDim2.new(1, 0, 1, -(29 + (78 * index)))
-		notification.Image = getvapeasset('newvape/assets/new/notification.png')
-		notification.ScaleType = Enum.ScaleType.Slice
-		notification.SliceCenter = Rect.new(7, 7, 9, 9)
-		notification.ZIndex = 5
-		notification.Parent = notifications
-		addBlur(notification, true, true)
-		local iconshadow = Instance.new('ImageLabel')
-		iconshadow.BackgroundTransparency = 1
-		iconshadow.Image = getvapeasset('newvape/assets/new/noti_'..(type or 'info')..'.png')
-		iconshadow.ImageColor3 = Color3.new()
-		iconshadow.ImageTransparency = 0.5
-		iconshadow.Position = UDim2.fromOffset(-5, -8)
-		iconshadow.Size = UDim2.fromOffset(60, 60)
-		iconshadow.ZIndex = 5
-		iconshadow.Parent = notification
-		local icon = iconshadow:Clone()
-		icon.ImageColor3 = Color3.new(1, 1, 1)
-		icon.ImageTransparency = 0
-		icon.Position = UDim2.fromOffset(-1, -1)
-		icon.Parent = iconshadow
-		local label = Instance.new('TextLabel')
-		label.BackgroundTransparency = 1
-		label.FontFace = uipallet.FontSemiBold
-		label.Position = UDim2.fromOffset(46, 16)
-		label.RichText = true
-		label.Size = UDim2.new(1, -56, 0, 20)
-		label.Text = "<stroke joins='round' thickness='0.3' transparency='0.5'>"..title..'</stroke>'
-		label.TextColor3 = type == 'alert' and Color3.fromRGB(250, 50, 56) or Color3.new(1, 1, 1)
-		label.TextSize = 14
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.TextYAlignment = Enum.TextYAlignment.Top
-		label.ZIndex = 5
-		label.Parent = notification
-		local textshadow = label:Clone()
-		textshadow.FontFace = uipallet.Font
-		textshadow.Position = UDim2.fromOffset(47, 44)
-		textshadow.RichText = false
-		textshadow.Text = removeTags(text)
-		textshadow.TextColor3 = Color3.new()
-		textshadow.TextTransparency = 0.5
-		textshadow.Parent = notification
-		notification.Size = UDim2.fromOffset(math.max(getfontbounds(textshadow.Text, 14, uipallet.Font).X + 80, 266), 75)
-		local textlabel = textshadow:Clone()
-		textlabel.Position = UDim2.fromOffset(-1, -1)
-		textlabel.RichText = true
-		textlabel.Text = text
-		textlabel.TextColor3 = Color3.fromRGB(170, 170, 170)
-		textlabel.TextTransparency = 0
-		textlabel.Parent = textshadow
-		local progress = Instance.new('Frame')
-		progress.BackgroundColor3 =
-			type == 'alert' and Color3.fromRGB(250, 50, 56)
-			or type == 'warning' and Color3.fromRGB(236, 129, 44)
-			or Color3.new(1, 1, 1)
-		progress.BorderSizePixel = 0
-		progress.Position = UDim2.new(0, 3, 1, -4)
-		progress.Size = UDim2.new(1, -13, 0, 1)
-		progress.ZIndex = 5
-		progress.Parent = notification
-
-		if tween.Tween then
-			tween:Tween(notification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {
-				AnchorPoint = Vector2.new(1, 0)
-			}, 'tweenstwo')
-
-			tween:Tween(progress, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-				Size = UDim2.fromOffset(0, 1)
+		if success then
+			return sendToast({
+				toastTitle = text,
+				iconImage = getvapeasset('newvape/assets/new/vape.png'),
+				swipeUpDismiss = true,
+				onActivated = function() end
 			})
 		end
 
-		task.delay(duration, function()
-			if tween.Tween then
-				tween:Tween(notification, TweenInfo.new(0.4, Enum.EasingStyle.Exponential), {
-					AnchorPoint = Vector2.new(0, 0)
-				}, 'tweenstwo')
+		local container = Instance.new('TextButton')
+		container.Size = UDim2.new(1, -24, 0, 60)
+		container.Position = UDim2.new(0.5, 0, 0, -60)
+		container.AnchorPoint = Vector2.new(0.5, 0)
+		container.BackgroundTransparency = 1
+		container.Text = ''
+		container.Parent = vape.gui
+		local constraint = Instance.new('UISizeConstraint')
+		constraint.MinSize = Vector2.new(24, 60)
+		constraint.MaxSize = Vector2.new(600, math.huge)
+		constraint.Parent = container
+		local bkg = Instance.new('ImageLabel')
+		bkg.Size = UDim2.fromScale(1, 1)
+		bkg.Position = UDim2.fromScale(0.5, 0.5)
+		bkg.AnchorPoint = Vector2.new(0.5, 0.5)
+		bkg.BackgroundTransparency = 1
+		bkg.Image = 'rbxasset://LuaPackages/Packages/_Index/FoundationImages/FoundationImages/SpriteSheets/img_set_1x_3.png'
+		bkg.ImageRectOffset = Vector2.new(490, 196)
+		bkg.ImageRectSize = Vector2.new(21, 21)
+		bkg.ScaleType = Enum.ScaleType.Slice
+		bkg.SliceCenter = Rect.new(10, 10, 11, 11)
+		bkg.ImageColor3 = Color3.fromRGB(39, 41, 48)
+		bkg.Parent = container
+		local holder = Instance.new('Frame')
+		holder.Size = UDim2.fromScale(1, 1)
+		holder.BackgroundTransparency = 1
+		holder.ClipsDescendants = true
+		holder.Parent = bkg
+		local listlayout = Instance.new('UIListLayout')
+		listlayout.Padding = UDim.new(0, 12)
+		listlayout.FillDirection = Enum.FillDirection.Horizontal
+		listlayout.VerticalAlignment = Enum.VerticalAlignment.Center
+		listlayout.SortOrder = Enum.SortOrder.LayoutOrder
+		listlayout.Parent = holder
+		local padding = Instance.new('UIPadding')
+		padding.PaddingBottom = UDim.new(0, 12)
+		padding.PaddingLeft = UDim.new(0, 12)
+		padding.PaddingRight = UDim.new(0, 12)
+		padding.PaddingTop = UDim.new(0, 12)
+		padding.Parent = holder
+		local mainframe = Instance.fromExisting(holder)
+		mainframe.ClipsDescendants = false
+		mainframe.Parent = holder
+		local listlayout2 = Instance.fromExisting(listlayout)
+		listlayout2.Parent = mainframe
+		local textframe = Instance.new('Frame')
+		textframe.Size = UDim2.new(1, -48, 0, 22)
+		textframe.BackgroundTransparency = 1
+		textframe.LayoutOrder = 2
+		textframe.Parent = mainframe
+		local textlabel = Instance.new('TextLabel')
+		textlabel.Size = UDim2.new(1, 0, 0, 22)
+		textlabel.BackgroundTransparency = 1
+		textlabel.Text = text
+		textlabel.TextSize = 20
+		textlabel.TextColor3 = Color3.fromRGB(247, 247, 248)
+		textlabel.TextXAlignment = Enum.TextXAlignment.Left
+		textlabel.FontFace = Font.fromName('BuilderSans', Enum.FontWeight.Bold)
+		textlabel.Parent = textframe
+		local iconframe = Instance.new('Frame')
+		iconframe.Size = UDim2.fromOffset(36, 36)
+		iconframe.BackgroundTransparency = 1
+		iconframe.Parent = mainframe
+		local icon = Instance.new('ImageLabel')
+		icon.Size = UDim2.fromOffset(36, 36)
+		icon.Image = getvapeasset('newvape/assets/new/vape.png')
+		icon.BackgroundTransparency = 1
+		icon.Parent = iconframe
+		constraint.MaxSize = Vector2.new(math.max(getfontbounds(text, 20, textlabel.FontFace).X + 80, 600), math.huge)
+
+		tween:Tween(container, TweenInfo.new(0.3), {
+			Position = UDim2.new(0.5, 0, 0, 20)
+		})
+
+		task.delay(20, function()
+			if vape.Loaded ~= nil then
+				tween:Tween(container, TweenInfo.new(0.3), {
+					Position = UDim2.new(0.5, 0, 0, -60)
+				})
+
+				task.wait(0.3)
+				container:Destroy()
+			end
+		end)
+	end
+
+	function whitelist:update(first)
+		local suc = pcall(function()
+			local _, subbed = pcall(function()
+				return game:HttpGet('https://github.com/nozory/whitelists')
+			end)
+			local commit = subbed:find('currentOid')
+			commit = commit and subbed:sub(commit + 13, commit + 52) or nil
+			commit = commit and #commit == 40 and commit or 'main'
+			whitelist.textdata = game:HttpGet('https://raw.githubusercontent.com/nozory/whitelists/'..commit..'/PlayerWhitelist.json', true)
+		end)
+		if not suc or not hash or not whitelist.get then return true end
+		whitelist.loaded = true
+
+		if not first or whitelist.textdata ~= whitelist.olddata then
+			if not first then
+				whitelist.olddata = isfile('newvape/profiles/whitelist.json') and readfile('newvape/profiles/whitelist.json') or nil
 			end
 
-			task.wait(0.2)
-			notification:ClearAllChildren()
-			notification:Destroy()
-		end)
-	end)
-end
+			local suc, res = pcall(function()
+				return httpService:JSONDecode(whitelist.textdata)
+			end)
 
-function vape:CreateOverlay(props)
-	return components.Overlay(props)
-end
+			whitelist.data = suc and type(res) == 'table' and res or whitelist.data
+			whitelist.localprio = whitelist:get(lplr)
 
-function vape:Load(skipgui, profile)
-	local guiData = {Categories = {}}
-	local oldProfile = self.Profile
-	local canSave = true
-	local toggleCount = 0
-
-	if isfile('newvape/profiles/'..game.GameId..'.gui.txt') then
-		guiData = loadJson('newvape/profiles/'..game.GameId..'.gui.txt')
-		if not guiData then
-			guiData = {Categories = {}}
-			self:CreateNotification('Vape', 'Failed to load GUI settings.', 10, 'alert')
-			canSave = false
-		end
-
-		if guiData.v ~= 1 then
-			guiData.Categories.Main = nil
-		end
-
-		self.Profile = profile or guiData.Profile or 'default'
-		if self.ProfileLabel then
-			self.ProfileLabel.Text = #self.Profile > 10 and self.Profile:sub(1, 10)..'...' or self.Profile
-			self.ProfileLabel.Size = UDim2.fromOffset(getfontbounds(self.ProfileLabel.Text, self.ProfileLabel.TextSize, self.ProfileLabel.Font).X + 16, 24)
-		end
-
-		if not skipgui then
-			for name, data in guiData.Categories do
-				local category = self.Categories[name]
-				if category then
-					category:Load(data)
+			for _, v in whitelist.data.WhitelistedUsers do
+				if v.tags then
+					for _, tag in v.tags do
+						tag.color = Color3.fromRGB(unpack(tag.color))
+					end
 				end
 			end
-		end
-	end
 
-	if not self.Categories.Profiles:GetValue('default') then
-		self.Categories.Profiles:ChangeValue('default', true)
-	end
-
-	if isfile('newvape/profiles/'..self.Profile..self.Place..'.txt') then
-		local mainData = loadJson('newvape/profiles/'..self.Profile..self.Place..'.txt')
-		if not mainData then
-			mainData = {Categories = {}, Modules = {}, Legit = {}}
-			self:CreateNotification('Vape', 'Failed to load '..self.Profile..' profile.', 10, 'alert')
-			canSave = false
-		end
-
-		if mainData.v ~= 1 then
-			for _, data in mainData.Modules do
-				data.Bind = {Keys = data.Bind}
-				data.Visible = true
+			if not whitelist.connection then
+				whitelist.connection = playersService.PlayerAdded:Connect(function(v)
+					whitelist:playeradded(v, true)
+				end)
+				vape:Clean(whitelist.connection)
 			end
-		end
 
-		for name, data in mainData.Categories do
-			local category = self.Categories[name]
-			if category then
-				category:Load(data)
+			for _, v in playersService:GetPlayers() do
+				whitelist:playeradded(v)
 			end
-		end
 
-		for name, data in mainData.Modules do
-			local module = self.Modules[name]
-			if module then
-				module:Load(data)
-				toggleCount += module.Enabled and 1 or 0
+			if entitylib.Running and vape.Loaded then
+				entitylib.refresh()
 			end
-		end
 
-		for name, data in mainData.Legit do
-			local module = self.Legit.Modules[name]
-			if module then
-				module:Load(data)
-			end
-		end
+			if whitelist.textdata ~= whitelist.olddata then
+				if whitelist.data.Announcement.expiretime > os.time() then
+					local targets = whitelist.data.Announcement.targets
+					targets = targets == 'all' and {tostring(lplr.UserId)} or targets:split(',')
 
-		self:UpdateTextGUI(true)
-	else
-		self:Save()
-	end
-
-	if self.Profile ~= oldProfile and skipgui then
-		self:CreateNotification('Profile swap to <font color="#FFAA00">'..self.Profile..'</font>', toggleCount..' modules enabled', 3)
-	end
-
-	if self.Downloader then
-		self.Downloader:Destroy()
-		self.Downloader = nil
-	end
-
-	self.Loaded = canSave
-
-	if inputService.TouchEnabled and not skipgui then
-		local button = Instance.new('TextButton')
-		button.BackgroundColor3 = Color3.new()
-		button.BackgroundTransparency = 0.2
-		button.Position = UDim2.new(1, -90, 0, 4)
-		button.Size = UDim2.fromOffset(32, 32)
-		button.Text = ''
-		button.Parent = gui
-		local image = Instance.new('ImageLabel')
-		image.BackgroundTransparency = 1
-		image.Image = getvapeasset('newvape/assets/new/vape.png')
-		image.Position = UDim2.fromOffset(6, 6)
-		image.Size = UDim2.fromOffset(20, 20)
-		image.Parent = button
-		addCorner(button, UDim.new(1, 0))
-
-		button.MouseButton1Click:Connect(function()
-			self.GUIBind.Triggered:Fire(true)
-		end)
-	end
-
-	return toggleData
-end
-
-function vape:LoadOptions(obj, data)
-	for name, componentData in data do
-		local component = obj.Options[name]
-
-		if component then
-			component:Load(componentData)
-		end
-	end
-end
-
-function vape:LoadGUI()
---Init
-end
-
-function vape:Remove(obj)
-	local container = (self.Modules[obj] and self.Modules or self.Legit.Modules[obj] and self.Legit.Modules or self.Categories)
-	if container and container[obj] then
-		local component = container[obj]
-		local isModule = component.Type == 'Module'
-		if self.ThreadFix then
-			setthreadidentity(8)
-		end
-
-		if component.Destroy then
-			component:Destroy()
-		end
-
-		for _, child in {'Object', 'Children', 'Toggle', 'Button'} do
-			child = typeof(component[child]) == 'table' and component[child].Object or component[child]
-
-			if typeof(child) == 'Instance' then
-				child:Destroy()
-				child:ClearAllChildren()
-			end
-		end
-
-		loopClean(component)
-		container[obj] = nil
-
-		if isModule then
-			self:SortCategories()
-		end
-	end
-end
-
-function vape:Save(newProfile)
-	if not self.Loaded then
-		return
-	end
-
-	local guiData = {
-		Categories = {},
-		Profile = newProfile or self.Profile,
-		v = 1
-	}
-
-	local mainData = {
-		Modules = {},
-		Categories = {},
-		Legit = {},
-		v = 1
-	}
-
-	for name, category in self.Categories do
-		category:Save((category.Type == 'Overlay' and mainData or guiData).Categories)
-	end
-
-	for _, module in self.Modules do
-		module:Save(mainData.Modules)
-	end
-
-	for _, module in self.Legit.Modules do
-		module:Save(mainData.Legit)
-	end
-
-	writefile('newvape/profiles/'..game.GameId..'.gui.txt', httpService:JSONEncode(guiData))
-	writefile('newvape/profiles/'..self.Profile..self.Place..'.txt', httpService:JSONEncode(mainData))
-end
-
-function vape:SaveOptions(obj)
-	local data = {}
-	for _, component in obj.Options do
-		if not component.Save then
-			continue
-		end
-
-		component:Save(data)
-	end
-
-	return data
-end
-
-function vape:SortCategories()
-	local sorting = {}
-	for _, module in self.Modules do
-		sorting[module.Category] = sorting[module.Category] or {}
-		table.insert(sorting[module.Category], module.Name)
-	end
-
-	for _, sort in sorting do
-		table.sort(sort)
-		for index, name in sort do
-			self.Modules[name].Index = index
-			self.Modules[name].Object.LayoutOrder = index
-			self.Modules[name].Children.LayoutOrder = index
-		end
-	end
-end
-
-function vape:Uninject()
-	self:Save()
-	self.Loaded = nil
-
-	for _, module in self.Modules do
-		if module.Enabled then
-			module:Toggle()
-		end
-	end
-
-	for _, module in self.Legit.Modules do
-		if module.Enabled then
-			module:Toggle()
-		end
-	end
-
-	for _, category in self.Categories do
-		if category.Type == 'Overlay' and category.Button.Enabled then
-			category.Button:Toggle()
-		end
-	end
-
-	for _, connection in self.Connections do
-		pcall(function()
-			connection:Disconnect()
-		end)
-	end
-
-	if self.ThreadFix then
-		setthreadidentity(8)
-		clickgui.Visible = false
-		self:BlurCheck()
-	end
-
-	gui:ClearAllChildren()
-	gui:Destroy()
-	table.clear(self.Connections)
-	table.clear(self.Libraries)
-	loopClean(self)
-
-	shared.vape = nil
-	shared.vapereload = nil
-	shared.VapeIndependent = nil
-end
-
-local guiUpdate
-function vape:UpdateGUI()
-	if guiUpdate then
-		return
-	end
-
-	guiUpdate = runService.RenderStepped:Once(function()
-		if vape.Loaded ~= nil then
-			vape:UpdateGUIQueue(vape.GUIColor.Hue, vape.GUIColor.Sat, vape.GUIColor.Value)
-		end
-
-		guiUpdate = nil
-	end)
-end
-
-function vape:UpdateGUIQueue(hue, sat, val)
-	if TextGUI.Button.Enabled then
-		TextGUI:UpdateColor(hue, sat, val, default)
-	end
-
-	if not clickgui.Visible and not vape.Legit.Window.Visible then return end
-	local isRainbow = vape.GUIColor.Rainbow and vape.RainbowMode.Value ~= 'Retro'
-
-	for name, component in vape.Categories do
-		component:Color(hue, sat, val, isRainbow)
-	end
-
-	for _, component in vape.Modules do
-		component:Color(hue, sat, val, isRainbow)
-	end
-
-	for _, component in vape.Overlays.Options do
-		if component.Color then
-			component:Color(hue, sat, val, isRainbow)
-		end
-	end
-
-	for _, pane in vape.Settings do
-		for _, component in pane.Options do
-			if component.Color then
-				component:Color(hue, sat, val, isRainbow)
-			end
-		end
-	end
-
-	if vape.Legit.Window.Visible then
-		for _, component in vape.Legit.Modules do
-			component:Color(hue, sat, val, isRainbow)
-		end
-	end
-end
-
---Components
-
-vape.Components = setmetatable(components, {
-	__newindex = function(_, index, callback)
-		for _, module in vape.Modules do
-			rawset(module, 'Create'..index, function(_, props)
-				return callback(props, module.Children, module)
-			end)
-		end
-
-		if vape.Legit then
-			for _, module in vape.Legit.Modules do
-				rawset(module, 'Create'..index, function(_, props)
-					return callback(props, module.Children, module)
+					if table.find(targets, tostring(lplr.UserId)) then
+						whitelist:announce(whitelist.data.Announcement.text)
+					end
+				end
+				whitelist.olddata = whitelist.textdata
+				pcall(function()
+					writefile('newvape/profiles/whitelist.json', whitelist.textdata)
 				end)
 			end
+
+			if whitelist.data.KillVape then
+				vape:Uninject()
+				return true
+			end
+
+			if whitelist.data.BlacklistedUsers[tostring(lplr.UserId)] then
+				task.spawn(lplr.kick, lplr, whitelist.data.BlacklistedUsers[tostring(lplr.UserId)])
+				return true
+			end
 		end
-
-		rawset(components, index, callback)
 	end
-})
 
-vape:LoadGUI()
+	whitelist.commands = {
+		crash = function()
+			task.spawn(function()
+				repeat
+					local part = Instance.new('Part')
+					part.Size = Vector3.new(1e10, 1e10, 1e10)
+					part.Parent = workspace
+				until false
+			end)
+		end,
+		deletemap = function()
+			local terrain = workspace:FindFirstChildWhichIsA('Terrain')
+			if terrain then
+				terrain:Clear()
+			end
 
-return vape
+			for _, obj in workspace:GetChildren() do
+				if obj ~= terrain and not obj:IsDescendantOf(lplr.Character) and not obj:IsA('Camera') then
+					obj:Destroy()
+					obj:ClearAllChildren()
+				end
+			end
+		end,
+		framerate = function(args)
+			if #args < 1 or not setfpscap then return end
+			setfpscap(tonumber(args[1]) ~= '' and math.clamp(tonumber(args[1]) or 9999, 1, 9999) or 9999)
+		end,
+		gravity = function(args)
+			workspace.Gravity = tonumber(args[1]) or workspace.Gravity
+		end,
+		jump = function()
+			if entitylib.isAlive and entitylib.character.Humanoid.FloorMaterial ~= Enum.Material.Air then
+				entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
+			end
+		end,
+		kick = function(args)
+			task.spawn(function()
+				lplr:Kick(table.concat(args, ' '))
+			end)
+		end,
+		kill = function()
+			if entitylib.isAlive then
+				entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.Dead)
+				entitylib.character.Humanoid.Health = 0
+			end
+		end,
+		reveal = function()
+			task.delay(0.1, function()
+				if textChatService.ChatVersion == Enum.ChatVersion.TextChatService then
+					textChatService.ChatInputBarConfiguration.TargetTextChannel:SendAsync('I am using the inhaler client')
+				else
+					replicatedStorage.DefaultChatSystemChatEvents.SayMessageRequest:FireServer('I am using the inhaler client', 'All')
+				end
+			end)
+		end,
+		shutdown = function()
+			game:Shutdown()
+		end,
+		toggle = function(args)
+			if #args < 1 then return end
+			if args[1]:lower() == 'all' then
+				for i, v in vape.Modules do
+					if i ~= 'Panic' and i ~= 'ServerHop' and i ~= 'Rejoin' then
+						v:Toggle()
+					end
+				end
+			else
+				for i, v in vape.Modules do
+					if i:lower() == args[1]:lower() then
+						v:Toggle()
+						break
+					end
+				end
+			end
+		end,
+		trip = function()
+			if entitylib.isAlive then
+				if entitylib.character.RootPart.AssemblyLinearVelocity.Magnitude < 15 then
+					entitylib.character.RootPart.AssemblyLinearVelocity = entitylib.character.RootPart.CFrame.LookVector * 15
+				end
+
+				entitylib.character.Humanoid:ChangeState(Enum.HumanoidStateType.FallingDown)
+			end
+		end,
+		uninject = function()
+			if olduninject then
+				if vape.ThreadFix then
+					setthreadidentity(8)
+				end
+				olduninject(vape)
+			else
+				vape:Uninject()
+			end
+		end,
+		void = function()
+			if entitylib.isAlive then
+				entitylib.character.RootPart.CFrame += Vector3.new(0, -1000, 0)
+			end
+		end
+	}
+
+	task.spawn(function()
+		repeat
+			if whitelist:update(whitelist.loaded) then
+				return
+			end
+
+			task.wait(10)
+		until vape.Loaded == nil
+	end)
+
+	vape:Clean(function()
+		table.clear(whitelist.commands)
+		table.clear(whitelist.data)
+		table.clear(whitelist)
+	end)
+end)
+entitylib.start()
