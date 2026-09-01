@@ -53,8 +53,18 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 if shared.vape then shared.vape:Uninject() end
 
--- Initialisation de vape avec Libraries AVANT de le partager
-local vape = {Libraries = {}}
+-- Initialisation de vape avec méthodes temporaires pour la GUI
+local vape = {
+    Libraries = {}
+}
+
+-- Méthodes factices pour éviter les erreurs pendant le chargement de la GUI
+function vape:Clean(...) end
+function vape:CreateNotification(...) end
+function vape:Load() end
+function vape:Save() end
+function vape:Uninject() end
+
 shared.vape = vape   -- <-- Assigner ici pour que la GUI puisse l'utiliser
 
 -- =============================================
