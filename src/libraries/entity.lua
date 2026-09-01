@@ -1,3 +1,7 @@
+-- ============================================
+-- ENTITY LIBRARY - Version corrigée
+-- ============================================
+
 local entitylib = {
 	isAlive = false,
 	character = {},
@@ -31,15 +35,12 @@ local entitylib = {
 					table.clear(rself)
 				end
 			}
-
 			return self[ind]
 		end
 	})
 }
 
-local cloneref = cloneref or function(obj)
-	return obj
-end
+local cloneref = cloneref or function(obj) return obj end
 local playersService = cloneref(game:GetService('Players'))
 local inputService = cloneref(game:GetService('UserInputService'))
 local lplr = playersService.LocalPlayer
@@ -56,7 +57,6 @@ end
 --  FONCTIONS POUR LE CONTENEUR PERSONNALISÉ
 -- =====================================================
 
--- Récupère la liste des joueurs depuis le conteneur personnalisé
 local function getPlayersFromContainer()
 	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
@@ -97,8 +97,6 @@ local function getPlayersFromContainer()
 	return {}
 end
 
--- Récupère le conteneur lui-même (pour les événements)
--- Retourne toujours un objet valide : soit playersService, soit un conteneur avec ChildAdded
 local function getContainer()
 	local path = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
@@ -122,9 +120,7 @@ local function getContainer()
 		return playersService
 	end
 
-	-- On accepte Workspace, Folder, Model comme conteneurs valides
-	-- Workspace n'a pas ChildRemoving, on gérera ça dans start()
-	if not current:IsA("DataModel") and not current:IsA("Folder") and not current:IsA("Model") then
+	if not (current:IsA("DataModel") or current:IsA("Folder") or current:IsA("Model")) then
 		warn("[Entity] Container is not a valid DataModel/Folder/Model, fallback to Players")
 		return playersService
 	end
@@ -132,12 +128,8 @@ local function getContainer()
 	return current
 end
 
--- =====================================================
---  FIN DES FONCTIONS POUR LE CONTENEUR
--- =====================================================
-
 local function loopClean(tbl)
-	for i, v in tbl do
+	for i, v in pairs(tbl) do
 		if type(v) == 'table' then
 			loopClean(v)
 		end
@@ -162,9 +154,11 @@ entitylib.targetCheck = function(entity)
 	end
 	if entity.NPC then return true end
 	if not lplr.Team then return true end
-	if not entity.Player.Team then return true end
-	if entity.Player.Team ~= lplr.Team then return true end
-	return #entity.Player.Team:GetPlayers() == #playersService:GetPlayers()
+
+	local playerTeam = entity.Player and entity.Player.Team
+	if not playerTeam then return true end
+	if playerTeam ~= lplr.Team then return true end
+	return #playerTeam:GetPlayers() == #playersService:GetPlayers()
 end
 
 entitylib.getUpdateConnections = function(entity)
@@ -176,7 +170,7 @@ entitylib.getUpdateConnections = function(entity)
 end
 
 entitylib.isVulnerable = function(entity)
-	return entity.Health > 0 and not entity.Character.FindFirstChildWhichIsA(entity.Character, 'ForceField')
+	return entity.Health > 0 and not entity.Character:FindFirstChildWhichIsA('ForceField')
 end
 
 entitylib.getEntityColor = function(entity)
@@ -186,8 +180,12 @@ end
 
 entitylib.IgnoreObject = RaycastParams.new()
 entitylib.IgnoreObject.RespectCanCollide = true
+
 entitylib.Wallcheck = function(origin, position, ignoreobject)
-	if typeof(ignoreobject) ~= 'Instance' then
+	local raycastParams
+	if typeof(ignoreobject) == 'Instance' then
+		raycastParams = ignoreobject
+	else
 		local ignorelist = {gameCamera, lplr.Character}
 		for _, entity in entitylib.List do
 			if entity.Targetable then
@@ -201,10 +199,10 @@ entitylib.Wallcheck = function(origin, position, ignoreobject)
 			end
 		end
 
-		ignoreobject = entitylib.IgnoreObject
-		ignoreobject.FilterDescendantsInstances = ignorelist
+		raycastParams = entitylib.IgnoreObject
+		raycastParams.FilterDescendantsInstances = ignorelist
 	end
-	return workspace.Raycast(workspace, origin, (position - origin), ignoreobject)
+	return workspace:Raycast(origin, position - origin, raycastParams)
 end
 
 entitylib.EntityMouse = function(entitysettings)
@@ -214,7 +212,7 @@ entitylib.EntityMouse = function(entitysettings)
 			if not entitysettings.Players and entity.Player then continue end
 			if not entitysettings.NPCs and entity.NPC then continue end
 			if not entity.Targetable then continue end
-			local position, vis = gameCamera.WorldToViewportPoint(gameCamera, entity[entitysettings.Part].Position)
+			local position, vis = gameCamera:WorldToViewportPoint(entity[entitysettings.Part].Position)
 			if not vis then continue end
 			local mag = (mouseLocation - Vector2.new(position.x, position.y)).Magnitude
 			if mag > entitysettings.Range then continue end
@@ -414,30 +412,33 @@ entitylib.addPlayer = function(plr)
 		entitylib.refreshEntity(plr.Character, plr)
 	end
 
-	entitylib.PlayerConnections[plr] = {
-		plr.CharacterAdded:Connect(function(char)
-			entitylib.refreshEntity(char, plr, os.clock() + 0.4)
-		end),
-		plr.CharacterRemoving:Connect(function(char)
-			entitylib.removeEntity(char, plr == lplr)
-		end),
-		plr:GetPropertyChangedSignal('Team'):Connect(function()
-			if plr == lplr then
-				local cloned = table.clone(entitylib.List)
-				for _, entity in cloned do
-					if entity.Targetable ~= entitylib.targetCheck(entity) then
-						entitylib.refreshEntity(entity.Character, entity.Player)
+	-- Connexion des événements uniquement si c'est un vrai joueur
+	if plr.CharacterAdded and plr.CharacterRemoving and plr.GetPropertyChangedSignal then
+		entitylib.PlayerConnections[plr] = {
+			plr.CharacterAdded:Connect(function(char)
+				entitylib.refreshEntity(char, plr, os.clock() + 0.4)
+			end),
+			plr.CharacterRemoving:Connect(function(char)
+				entitylib.removeEntity(char, plr == lplr)
+			end),
+			plr:GetPropertyChangedSignal('Team'):Connect(function()
+				if plr == lplr then
+					local cloned = table.clone(entitylib.List)
+					for _, entity in cloned do
+						if entity.Targetable ~= entitylib.targetCheck(entity) then
+							entitylib.refreshEntity(entity.Character, entity.Player)
+						end
+					end
+					table.clear(cloned)
+				else
+					local entity = entitylib.getEntity(plr)
+					if entity then
+						entitylib.refreshEntity(entity.Character, plr)
 					end
 				end
-				table.clear(cloned)
-			else
-				local entity = entitylib.getEntity(plr)
-				if entity then
-					entitylib.refreshEntity(entity.Character, plr)
-				end
-			end
-		end)
-	}
+			end)
+		}
+	end
 end
 
 entitylib.removePlayer = function(plr)
@@ -448,7 +449,15 @@ entitylib.removePlayer = function(plr)
 		table.clear(entitylib.PlayerConnections[plr])
 		entitylib.PlayerConnections[plr] = nil
 	end
-	entitylib.removeEntity(plr)
+
+	if plr.Character then
+		entitylib.removeEntity(plr.Character)
+	else
+		local entity, index = entitylib.getEntity(plr)
+		if index then
+			entitylib.removeEntity(entity.Character)
+		end
+	end
 end
 
 entitylib.start = function()
@@ -487,20 +496,16 @@ entitylib.start = function()
 					entitylib.addPlayer(fakePlayer)
 				end
 			end),
+			-- Utilisation de ChildRemoved au lieu de ChildRemoving
+			container.ChildRemoved:Connect(function(child)
+				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+					entitylib.removeEntity(child)
+				end
+			end),
 			workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
 				gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
 			end)
 		}
-		
-		-- Seulement si le conteneur a ChildRemoving (Workspace n'en a pas)
-		
-			table.insert(connections, container.ChildRemoved:Connect(function(child)
-				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
-					entitylib.removeEntity(child)
-				end
-			end))
-	
-		
 		entitylib.Connections = connections
 	else
 		warn("[Entity] No valid container found, entity system may not work.")
@@ -544,7 +549,6 @@ entitylib.stop = function()
 	entitylib.Running = false
 end
 
--- Met à jour le conteneur de joueurs et recharge la liste
 function entitylib.updateContainer(newPath)
 	local path = tostring(newPath or "Players")
 	shared.PlayerContainer = path
@@ -564,7 +568,6 @@ entitylib.kill = function()
 		event:Destroy()
 	end
 
-	entitylib.IgnoreObject:Destroy()
 	loopClean(entitylib)
 end
 
