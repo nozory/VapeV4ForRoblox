@@ -122,8 +122,8 @@ local function getContainer()
 		return playersService
 	end
 
-	-- Vérifier que l'objet a bien ChildAdded/ChildRemoving (services comme Workspace aussi)
-	-- Si ce n'est pas un DataModel, Folder ou Model, on utilise Players
+	-- On accepte Workspace, Folder, Model comme conteneurs valides
+	-- Workspace n'a pas ChildRemoving, on gérera ça dans start()
 	if not current:IsA("DataModel") and not current:IsA("Folder") and not current:IsA("Model") then
 		warn("[Entity] Container is not a valid DataModel/Folder/Model, fallback to Players")
 		return playersService
@@ -473,7 +473,7 @@ entitylib.start = function()
 			end)
 		}
 	elseif container then
-		entitylib.Connections = {
+		local connections = {
 			container.ChildAdded:Connect(function(child)
 				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
 					local fakePlayer = {
@@ -487,15 +487,21 @@ entitylib.start = function()
 					entitylib.addPlayer(fakePlayer)
 				end
 			end),
-			container.ChildRemoving:Connect(function(child)
-				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
-					entitylib.removeEntity(child)
-				end
-			end),
 			workspace:GetPropertyChangedSignal('CurrentCamera'):Connect(function()
 				gameCamera = workspace.CurrentCamera or workspace:FindFirstChildWhichIsA('Camera')
 			end)
 		}
+		
+		-- Seulement si le conteneur a ChildRemoving (Workspace n'en a pas)
+		if container.ChildRemoving then
+			table.insert(connections, container.ChildRemoving:Connect(function(child)
+				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
+					entitylib.removeEntity(child)
+				end
+			end))
+		end
+		
+		entitylib.Connections = connections
 	else
 		warn("[Entity] No valid container found, entity system may not work.")
 		entitylib.Connections = {}
