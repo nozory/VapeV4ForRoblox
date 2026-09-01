@@ -53,29 +53,41 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
 -- Initialisation de vape avec méthodes temporaires et structures pour la GUI
+local function createFakeEvent()
+    local handlers = {}
+    return {
+        Connect = function(_, fn)
+            table.insert(handlers, fn)
+            return {
+                Disconnect = function()
+                    local idx = table.find(handlers, fn)
+                    if idx then table.remove(handlers, idx) end
+                end
+            }
+        end,
+        Fire = function(_, ...)
+            for _, fn in ipairs(handlers) do
+                task.spawn(fn, ...)
+            end
+        end
+    }
+end
+
 local vape = {
     Libraries = {},
     Categories = {
         Friends = {
             Options = {},
-            Update = {
-                Event = Instance.new('BindableEvent')
-            }
+            Update = { Event = createFakeEvent() }
         },
         Targets = {
             Options = {},
-            Update = {
-                Event = Instance.new('BindableEvent')
-            }
+            Update = { Event = createFakeEvent() }
         }
     },
     Settings = {
-        GUI = {
-            Options = {}
-        },
-        Modules = {
-            Options = {}
-        }
+        GUI = { Options = {} },
+        Modules = { Options = {} }
     }
 }
 
