@@ -53,7 +53,9 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 if shared.vape then shared.vape:Uninject() end
 
+-- Initialisation de vape avec Libraries AVANT de le partager
 local vape = {Libraries = {}}
+shared.vape = vape   -- <-- Assigner ici pour que la GUI puisse l'utiliser
 
 -- =============================================
 --  CORRECTION : éviter la récursion de loadstring
@@ -160,10 +162,6 @@ end
 -- =============================================
 --  CHARGE entity.lua DANS vape.Libraries
 -- =============================================
-if not vape.Libraries then
-    vape.Libraries = {}
-end
-
 if not vape.Libraries.entity then
     local entityPath = 'newvape/libraries/entity.lua'
     local entityScript
