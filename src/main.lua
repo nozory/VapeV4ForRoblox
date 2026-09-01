@@ -72,6 +72,8 @@ local function createFakeCategory(name)
                 return function() return {Object = {}} end
             elseif k == "CreateDivider" or k == "CreateOverlayBar" then
                 return function() end
+            elseif k == "CreateTargets" then  -- AJOUT
+                return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
             else
                 return nil
             end
@@ -97,7 +99,6 @@ local vape = setmetatable({
     Place = game.PlaceId,
 }, {
     __index = function(t, k)
-        -- Si on accède à Categories et qu'il est nil, on le crée automatiquement
         if k == "Categories" then
             return setmetatable({}, {
                 __index = function(_, catName)
@@ -113,13 +114,14 @@ local vape = setmetatable({
             return function(data) return createFakeCategory(data.Name) end
         elseif k == "CreateCategoryList" then
             return function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
+        elseif k == "CreateTargets" then  -- AJOUT
+            return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
         else
             return nil
         end
     end
 })
 
--- Protection de l'ancien vape
 if shared.vape then pcall(function() shared.vape:Uninject() end) end
 shared.vape = vape
 
@@ -185,18 +187,13 @@ if not isfile('newvape/profiles/gui.txt') then writefile('newvape/profiles/gui.t
 local gui = 'new'
 if not isfolder('newvape/assets/'..gui) then makefolder('newvape/assets/'..gui) end
 
--- Charge la GUI avec gestion d'échec
 local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
-    if newVape then
-        vape = newVape
-        shared.vape = vape
-    end
+    if newVape then vape = newVape; shared.vape = vape end
 end
 if not vape.Libraries then vape.Libraries = {} end
 
--- Charge entity.lua
 if not vape.Libraries.entity then
     local entityPath = 'newvape/libraries/entity.lua'
     local entityScript
@@ -205,15 +202,9 @@ if not vape.Libraries.entity then
         local suc, res = pcall(function() return downloadFile(entityPath) end)
         if suc and res then entityScript = loadstring(res, 'entity') end
     end
-    if entityScript then
-        vape.Libraries.entity = entityScript()
-        print("[Main] entity loaded")
-    else
-        warn("[Main] Failed to load entity.lua")
-    end
+    if entityScript then vape.Libraries.entity = entityScript(); print("[Main] entity loaded") else warn("[Main] Failed to load entity.lua") end
 end
 
--- Commandes console
 local function setupConsoleCommands()
     local oldPrint = print
     print = function(...)
