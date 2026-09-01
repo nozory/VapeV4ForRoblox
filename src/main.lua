@@ -81,7 +81,41 @@ local function createFakeCategory(name)
     })
 end
 
-local vape = setmetatable({
+-- Enveloppe une table existante avec une métatable qui fournit des clés par défaut
+local function wrapVape(realVape)
+    local wrapper = setmetatable({}, {
+        __index = function(_, k)
+            -- D'abord, vérifier si la clé existe dans realVape
+            if realVape[k] ~= nil then
+                return realVape[k]
+            end
+
+            -- Sinon, fournir des valeurs par défaut
+            if k == "Categories" then
+                return setmetatable({}, {
+                    __index = function(_, catName)
+                        if catName == "Main" or catName == "Combat" or catName == "Blatant" or catName == "Render" or catName == "Utility" or catName == "World" or catName == "Inventory" or catName == "Friends" or catName == "Targets" or catName == "Profiles" then
+                            return createFakeCategory(catName)
+                        end
+                        return nil
+                    end
+                })
+            elseif k == "Clean" or k == "CreateNotification" or k == "Load" or k == "Save" or k == "Uninject" or k == "BlurCheck" or k == "UpdateGUI" then
+                return function() end
+            elseif k == "CreateCategory" then
+                return function(data) return createFakeCategory(data.Name) end
+            elseif k == "CreateCategoryList" or k == "CreateTargets" then
+                return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
+            else
+                return nil
+            end
+        end
+    })
+    return wrapper
+end
+
+-- Table temporaire de base
+local vape = wrapVape({
     Libraries = {},
     Settings = {
         GUI = {Options = {}},
@@ -97,29 +131,6 @@ local vape = setmetatable({
     Loaded = true,
     Profile = "default",
     Place = game.PlaceId,
-}, {
-    __index = function(t, k)
-        if k == "Categories" then
-            return setmetatable({}, {
-                __index = function(_, catName)
-                    if catName == "Main" or catName == "Combat" or catName == "Blatant" or catName == "Render" or catName == "Utility" or catName == "World" or catName == "Inventory" or catName == "Friends" or catName == "Targets" or catName == "Profiles" then
-                        return createFakeCategory(catName)
-                    end
-                    return nil
-                end
-            })
-        elseif k == "Clean" or k == "CreateNotification" or k == "Load" or k == "Save" or k == "Uninject" or k == "BlurCheck" or k == "UpdateGUI" then
-            return function() end
-        elseif k == "CreateCategory" then
-            return function(data) return createFakeCategory(data.Name) end
-        elseif k == "CreateCategoryList" then
-            return function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-        elseif k == "CreateTargets" then
-            return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-        else
-            return nil
-        end
-    end
 })
 
 if shared.vape then pcall(function() shared.vape:Uninject() end) end
@@ -194,29 +205,18 @@ local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
     if newVape then
-        vape = newVape
+        vape = wrapVape(newVape)  -- envelopper la vraie table
         shared.vape = vape
     end
 end
 
--- Attendre un peu pour que la GUI finisse ses initialisations
+-- Attendre un court instant pour laisser la GUI se stabiliser
 task.wait(0.1)
 
--- S'assurer que les méthodes manquantes sont définies sur vape et shared.vape
-if not vape.CreateTargets then
-    vape.CreateTargets = function()
-        return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
-    end
+-- S'assurer que Libraries existe
+if not vape.Libraries then
+    vape.Libraries = {}
 end
-if not vape.CreateModule then
-    vape.CreateModule = function() return {Options = {}, Toggle = function() end} end
-end
-if not vape.CreateCategoryList then
-    vape.CreateCategoryList = function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-end
-shared.vape = vape  -- s'assurer que shared.vape pointe vers la même table modifiée
-
-if not vape.Libraries then vape.Libraries = {} end
 
 -- =============================================
 --  CHARGE entity.lua DANS vape.Libraries
