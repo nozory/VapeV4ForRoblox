@@ -47,7 +47,7 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
 -- =============================================
---  FONCTIONS FACTICES
+--  FONCTIONS FACTICES POUR LA GUI
 -- =============================================
 local function createFakeEvent()
     local handlers = {}
@@ -81,48 +81,21 @@ local function createFakeCategory(name)
     })
 end
 
--- =============================================
---  WRAPPER AVEC MÉTATABLE
--- =============================================
-local function wrapVape(realVape)
-    local wrapper = setmetatable({}, {
-        __index = function(_, k)
-            if realVape[k] ~= nil then
-                return realVape[k]
-            end
-            -- Méthodes factices communes
-            if k == "Clean" or k == "CreateNotification" or k == "Load" or k == "Save" or k == "Uninject" or k == "BlurCheck" or k == "UpdateGUI" then
-                return function() end
-            elseif k == "CreateCategory" then
-                return function(data) return createFakeCategory(data.Name) end
-            elseif k == "CreateCategoryList" then
-                return function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-            elseif k == "CreateTargets" then
-                return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-            elseif k == "Categories" then
-                return setmetatable({}, {
-                    __index = function(_, catName)
-                        local realCat = realVape.Categories and realVape.Categories[catName]
-                        if realCat then return realCat end
-                        if catName == "Main" or catName == "Combat" or catName == "Blatant" or catName == "Render" or catName == "Utility" or catName == "World" or catName == "Inventory" or catName == "Friends" or catName == "Targets" or catName == "Profiles" then
-                            return createFakeCategory(catName)
-                        end
-                        return nil
-                    end
-                })
-            else
-                return nil
-            end
-        end
-    })
-    return wrapper
-end
-
--- =============================================
---  INITIALISATION TEMPORAIRE
--- =============================================
-local vape = wrapVape({
+-- Table temporaire pour que la GUI puisse s'exécuter
+local vape = {
     Libraries = {},
+    Categories = {
+        Main = createFakeCategory("Main"),
+        Combat = createFakeCategory("Combat"),
+        Blatant = createFakeCategory("Blatant"),
+        Render = createFakeCategory("Render"),
+        Utility = createFakeCategory("Utility"),
+        World = createFakeCategory("World"),
+        Inventory = createFakeCategory("Inventory"),
+        Friends = createFakeCategory("Friends"),
+        Targets = createFakeCategory("Targets"),
+        Profiles = createFakeCategory("Profiles"),
+    },
     Settings = {
         GUI = {Options = {}},
         Modules = {Options = {}}
@@ -137,7 +110,24 @@ local vape = wrapVape({
     Loaded = true,
     Profile = "default",
     Place = game.PlaceId,
-})
+}
+
+function vape:Clean(...) end
+function vape:CreateNotification(...) end
+function vape:Load() end
+function vape:Save() end
+function vape:Uninject() end
+function vape:BlurCheck() end
+function vape:UpdateGUI() end
+function vape:CreateTargets()
+    return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+end
+function vape:CreateCategoryList(data)
+    return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+end
+function vape:CreateCategory(data)
+    return createFakeCategory(data.Name)
+end
 
 if shared.vape then pcall(function() shared.vape:Uninject() end) end
 shared.vape = vape
@@ -212,13 +202,18 @@ local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
     if newVape then
-        -- Envelopper la table réelle avec notre wrapper
-        vape = wrapVape(newVape)
+        vape = newVape
         shared.vape = vape
         getgenv().vape = vape
     end
 end
 
+-- =============================================
+--  CHARGE BASE.LUA (C'EST ICI QUE CreateTargets EST DÉFINI)
+-- =============================================
+loadstring(downloadFile('newvape/base.lua'), 'base')()
+
+-- Attendre un court instant pour laisser base.lua s'installer
 task.wait(0.1)
 
 if not vape.Libraries then
@@ -226,7 +221,7 @@ if not vape.Libraries then
 end
 
 -- =============================================
---  CHARGE entity.lua
+--  CHARGE ENTITY.LUA (déjà fait dans base.lua, mais on vérifie)
 -- =============================================
 if not vape.Libraries.entity then
     local entityPath = 'newvape/libraries/entity.lua'
