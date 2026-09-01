@@ -53,7 +53,7 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 if shared.vape then shared.vape:Uninject() end
 
-local vape = {}
+local vape = {Libraries = {}}
 
 -- =============================================
 --  CORRECTION : éviter la récursion de loadstring
@@ -153,6 +153,9 @@ end
 -- =============================================
 vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
 shared.vape = vape
+if not vape.Libraries then
+    vape.Libraries = {}
+end
 
 -- =============================================
 --  CHARGE entity.lua DANS vape.Libraries
