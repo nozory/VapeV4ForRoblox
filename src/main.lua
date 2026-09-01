@@ -3,30 +3,24 @@ repeat task.wait() until game:IsLoaded()
 -- =============================================
 --  CONFIGURATION DU CONTENEUR VIA FICHIER LOCAL
 -- =============================================
-
 local CONFIG_FILE = "VapeConfigPath.txt"
 
 local function loadContainerFromFile()
     local defaultPath = "Players"
     local path = defaultPath
-    
     if isfile and isfile(CONFIG_FILE) then
-        local content = readfile(CONFIG_FILE)
-        content = content:gsub("%s+", "")
+        local content = readfile(CONFIG_FILE):gsub("%s+", "")
         if content ~= "" then
             path = content
             print("[Config] Loaded container from file:", path)
         else
-            print("[Config] File is empty, using default:", defaultPath)
             writefile(CONFIG_FILE, defaultPath)
+            print("[Config] File empty, using default:", defaultPath)
         end
     else
-        if writefile then
-            writefile(CONFIG_FILE, defaultPath)
-        end
+        if writefile then writefile(CONFIG_FILE, defaultPath) end
         print("[Config] Created config file with default:", defaultPath)
     end
-    
     shared.PlayerContainer = path
     return path
 end
@@ -53,129 +47,90 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
 -- =============================================
---  CRÉATION DE LA TABLE VAPE TEMPORAIRE
---  avec méthodes et structures factices
+--  FONCTIONS FACTICES GÉNÉRIQUES
 -- =============================================
-
 local function createFakeEvent()
     local handlers = {}
     return {
-        Connect = function(_, fn)
-            table.insert(handlers, fn)
-            return {
-                Disconnect = function()
-                    local idx = table.find(handlers, fn)
-                    if idx then table.remove(handlers, idx) end
-                end
-            }
-        end,
-        Fire = function(_, ...)
-            for _, fn in ipairs(handlers) do
-                task.spawn(fn, ...)
-            end
-        end
-    }
-end
-
-local function createFakeModule()
-    return {
-        Name = "Module",
-        Options = {},
-        Toggle = function() end,
-        Bind = {}
+        Connect = function(_, fn) table.insert(handlers, fn); return {Disconnect = function() end} end,
+        Fire = function(_, ...) for _, fn in ipairs(handlers) do task.spawn(fn, ...) end end,
     }
 end
 
 local function createFakeCategory(name)
-    return {
+    return setmetatable({
         Name = name,
         Options = {},
         Modules = {},
-        Settings = {
-            Options = {},
-            CreateSettingsPane = function() return { CreateToggle = function() return {} end, CreateSlider = function() return {} end, CreateDropdown = function() return {} end, CreateButton = function() return {} end } end
-        },
-        CreateModule = function() return createFakeModule() end,
-        CreateDivider = function() end,
-        CreateOverlayBar = function() end,
-        CreateCategoryList = function() return { Update = { Event = createFakeEvent() }, Options = {} } end,
-    }
+        Settings = {Options = {}},
+        Update = {Event = createFakeEvent()},
+    }, {
+        __index = function(t, k)
+            if k == "CreateModule" then
+                return function() return {Options = {}, Toggle = function() end} end
+            elseif k == "CreateToggle" or k == "CreateSlider" or k == "CreateDropdown" or k == "CreateButton" then
+                return function() return {Object = {}} end
+            elseif k == "CreateDivider" or k == "CreateOverlayBar" then
+                return function() end
+            else
+                return nil
+            end
+        end
+    })
 end
 
-local vape = {
+local vape = setmetatable({
     Libraries = {},
-    Categories = {
-        Main = createFakeCategory("Main"),
-        Combat = createFakeCategory("Combat"),
-        Blatant = createFakeCategory("Blatant"),
-        Render = createFakeCategory("Render"),
-        Utility = createFakeCategory("Utility"),
-        World = createFakeCategory("World"),
-        Inventory = createFakeCategory("Inventory"),
-        Friends = createFakeCategory("Friends"),
-        Targets = createFakeCategory("Targets"),
-        Profiles = createFakeCategory("Profiles")
-    },
     Settings = {
-        GUI = { Options = {} },
-        Modules = { Options = {} }
+        GUI = {Options = {}},
+        Modules = {Options = {}}
     },
-    GUIBind = { Keys = {"RightShift"}, Triggered = createFakeEvent() },
+    GUIBind = {Keys = {"RightShift"}, Triggered = createFakeEvent()},
     HeldKeybinds = {},
     ActiveBinds = {},
     RainbowSliders = {},
     Windows = {},
     Modules = {},
-    Legit = { Modules = {} },
-    VapeButton = nil,
-    CurrentTooltip = nil,
-    Binding = nil,
-    ThreadFix = false,
+    Legit = {Modules = {}},
     Loaded = true,
     Profile = "default",
     Place = game.PlaceId,
-}
+}, {
+    __index = function(t, k)
+        -- Si on accède à Categories et qu'il est nil, on le crée automatiquement
+        if k == "Categories" then
+            return setmetatable({}, {
+                __index = function(_, catName)
+                    if catName == "Main" or catName == "Combat" or catName == "Blatant" or catName == "Render" or catName == "Utility" or catName == "World" or catName == "Inventory" or catName == "Friends" or catName == "Targets" or catName == "Profiles" then
+                        return createFakeCategory(catName)
+                    end
+                    return nil
+                end
+            })
+        elseif k == "Clean" or k == "CreateNotification" or k == "Load" or k == "Save" or k == "Uninject" or k == "BlurCheck" or k == "UpdateGUI" then
+            return function() end
+        elseif k == "CreateCategory" then
+            return function(data) return createFakeCategory(data.Name) end
+        elseif k == "CreateCategoryList" then
+            return function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
+        else
+            return nil
+        end
+    end
+})
 
-function vape:Clean(...) end
-function vape:CreateNotification(...) end
-function vape:Load() end
-function vape:Save() end
-function vape:Uninject() end
-function vape:CreateCategory(data)
-    if not self.Categories then self.Categories = {} end
-    local cat = createFakeCategory(data.Name)
-    self.Categories[data.Name] = cat
-    return cat
-end
-function vape:CreateCategoryList(data)
-    local list = { Update = { Event = createFakeEvent() }, Options = {}, ListEnabled = {}, Object = { Children = {} } }
-    self.Categories[data.Name] = list
-    return list
-end
-function vape:BlurCheck() end
-function vape:UpdateGUI() end
-function vape:Color(hue) return Color3.fromHSV(hue, 1, 1) end
-
--- Assigner la table temporaire à shared.vape
-if shared.vape then
-    pcall(function()
-        shared.vape:Uninject()
-    end)
-end
+-- Protection de l'ancien vape
+if shared.vape then pcall(function() shared.vape:Uninject() end) end
 shared.vape = vape
 
 -- =============================================
---  CORRECTION : éviter la récursion de loadstring
+--  CORRECTION LOADSTRING
 -- =============================================
 local oldLoadstring = loadstring
 local loadstring = function(...)
     local res, err = oldLoadstring(...)
     if err and vape then
-        if vape.CreateNotification then
-            vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert')
-        else
-            warn('[Vape] Failed to load : '..err)
-        end
+        if vape.CreateNotification then vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert') else warn('[Vape] '..err) end
     end
     return res
 end
@@ -183,9 +138,7 @@ end
 local queue_on_teleport = queue_on_teleport or function() end
 local isfile = isfile or function(file)
     if not readfile then return false end
-    local suc, res = pcall(function()
-        return readfile(file)
-    end)
+    local suc, res = pcall(function() return readfile(file) end)
     return suc and res ~= nil and res ~= ''
 end
 local cloneref = cloneref or function(obj) return obj end
@@ -196,12 +149,8 @@ local function downloadFile(path, func)
         local suc, res = pcall(function()
             return game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/'..select(1, path:gsub('newvape/', '')), true)
         end)
-        if not suc or res == '404: Not Found' then
-            error(res)
-        end
-        if path:find('.lua') then
-            res = '--This watermark is used to delete the file if its cached, remove it to make the file persist after vape updates.\n'..res
-        end
+        if not suc or res == '404: Not Found' then error(res) end
+        if path:find('.lua') then res = '--Watermark\n'..res end
         writefile(path, res)
     end
     return (func or readfile)(path)
@@ -210,56 +159,33 @@ end
 local function finishLoading()
     vape.Init = nil
     vape:Load()
-    task.spawn(function()
-        repeat
-            vape:Save()
-            task.wait(10)
-        until not vape.Loaded
-    end)
-
+    task.spawn(function() repeat vape:Save() task.wait(10) until not vape.Loaded end)
     local teleportedServers
     vape:Clean(playersService.LocalPlayer.OnTeleport:Connect(function()
         if (not teleportedServers) and (not shared.VapeIndependent) then
             teleportedServers = true
             local teleportScript = [[
                 shared.vapereload = true
-                if shared.VapeDeveloper then
-                    loadstring(readfile('newvape/loader.lua'), 'loader')()
-                else
-                    loadstring(game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')()
-                end
+                if shared.VapeDeveloper then loadstring(readfile('newvape/loader.lua'), 'loader')() else loadstring(game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/loader.lua', true), 'loader')() end
             ]]
-            if shared.VapeDeveloper then
-                teleportScript = 'shared.VapeDeveloper = true\n'..teleportScript
-            end
-            if shared.VapeCustomProfile then
-                teleportScript = 'shared.VapeCustomProfile = "'..shared.VapeCustomProfile..'"\n'..teleportScript
-            end
+            if shared.VapeDeveloper then teleportScript = 'shared.VapeDeveloper = true\n'..teleportScript end
+            if shared.VapeCustomProfile then teleportScript = 'shared.VapeCustomProfile = "'..shared.VapeCustomProfile..'"\n'..teleportScript end
             vape:Save()
             queue_on_teleport(teleportScript)
         end
     end))
-
     if not shared.vapereload then
-        if not vape.Categories then return end
-        if vape.Settings.GUI.Options['GUI bind indicator'] and vape.Settings.GUI.Options['GUI bind indicator'].Enabled then
+        if vape.Categories and vape.Settings.GUI.Options['GUI bind indicator'] and vape.Settings.GUI.Options['GUI bind indicator'].Enabled then
             vape:CreateNotification('Finished Loading', vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.GUIBind.Keys, ' + '):upper()..' to open GUI', 5)
         end
     end
 end
 
-if not isfile('newvape/profiles/gui.txt') then
-    writefile('newvape/profiles/gui.txt', 'new')
-end
-local gui = 'new'--readfile('newvape/profiles/gui.txt')
+if not isfile('newvape/profiles/gui.txt') then writefile('newvape/profiles/gui.txt', 'new') end
+local gui = 'new'
+if not isfolder('newvape/assets/'..gui) then makefolder('newvape/assets/'..gui) end
 
-if not isfolder('newvape/assets/'..gui) then
-    makefolder('newvape/assets/'..gui)
-end
-
--- =============================================
---  Charge la GUI et remplace vape par l'objet réel
--- =============================================
+-- Charge la GUI avec gestion d'échec
 local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
@@ -268,74 +194,44 @@ if guiFunc then
         shared.vape = vape
     end
 end
-if not vape.Libraries then
-    vape.Libraries = {}
-end
+if not vape.Libraries then vape.Libraries = {} end
 
--- =============================================
---  CHARGE entity.lua DANS vape.Libraries
--- =============================================
+-- Charge entity.lua
 if not vape.Libraries.entity then
     local entityPath = 'newvape/libraries/entity.lua'
     local entityScript
-    
-    if isfile(entityPath) then
-        entityScript = loadstring(readfile(entityPath), 'entity')
+    if isfile(entityPath) then entityScript = loadstring(readfile(entityPath), 'entity')
     else
-        local suc, res = pcall(function()
-            return downloadFile(entityPath)
-        end)
-        if suc and res then
-            entityScript = loadstring(res, 'entity')
-        end
+        local suc, res = pcall(function() return downloadFile(entityPath) end)
+        if suc and res then entityScript = loadstring(res, 'entity') end
     end
-    
     if entityScript then
         vape.Libraries.entity = entityScript()
-        print("[Main] entity loaded into vape.Libraries")
+        print("[Main] entity loaded")
     else
         warn("[Main] Failed to load entity.lua")
     end
 end
 
--- =============================================
---  COMMANDES VIA CONSOLE ROBLOX (F9)
--- =============================================
+-- Commandes console
 local function setupConsoleCommands()
     local oldPrint = print
-
     print = function(...)
         local args = {...}
         local msg = table.concat(args, " ")
-        
         if type(msg) == "string" and msg:lower():match("^;container (.+)") then
             local newPath = msg:match("^;container (.+)")
-            print("[Console] Container path updated to:", newPath)
-            
             shared.PlayerContainer = newPath
-            
             if vape.Libraries and vape.Libraries.entity then
-                if vape.Libraries.entity.updateContainer then
-                    vape.Libraries.entity.updateContainer(newPath)
-                elseif vape.Libraries.entity.Running then
-                    vape.Libraries.entity.stop()
-                    vape.Libraries.entity.start()
-                end
-            else
-                print("[Console] entity not loaded yet, value stored in shared.PlayerContainer")
+                if vape.Libraries.entity.updateContainer then vape.Libraries.entity.updateContainer(newPath)
+                elseif vape.Libraries.entity.Running then vape.Libraries.entity.stop(); vape.Libraries.entity.start() end
             end
-            
-            if vape.CreateNotification then
-                vape:CreateNotification("Container", "Set to: " .. newPath, 2)
-            end
-            
+            if vape.CreateNotification then vape:CreateNotification("Container", "Set to: " .. newPath, 2) end
             return
         end
-        
         oldPrint(...)
     end
 end
-
 task.spawn(setupConsoleCommands)
 
 print("[Main] Console commands ready. Type ';container <path>' in F9 console.")
@@ -346,12 +242,8 @@ if not shared.VapeIndependent then
         loadstring(readfile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
     else
         if not shared.VapeDeveloper then
-            local suc, res = pcall(function()
-                return game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/games/'..game.PlaceId..'.lua', true)
-            end)
-            if suc and res ~= '404: Not Found' then
-                loadstring(downloadFile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...)
-            end
+            local suc, res = pcall(function() return game:HttpGet('https://raw.githubusercontent.com/nozory/VapeCompiled/'..readfile('newvape/profiles/commit.txt')..'/games/'..game.PlaceId..'.lua', true) end)
+            if suc and res ~= '404: Not Found' then loadstring(downloadFile('newvape/games/'..game.PlaceId..'.lua'), tostring(game.PlaceId))(...) end
         end
     end
     finishLoading()
