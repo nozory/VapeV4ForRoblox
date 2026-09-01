@@ -72,7 +72,7 @@ local function createFakeCategory(name)
                 return function() return {Object = {}} end
             elseif k == "CreateDivider" or k == "CreateOverlayBar" then
                 return function() end
-            elseif k == "CreateTargets" then  -- AJOUT
+            elseif k == "CreateTargets" then
                 return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
             else
                 return nil
@@ -114,7 +114,7 @@ local vape = setmetatable({
             return function(data) return createFakeCategory(data.Name) end
         elseif k == "CreateCategoryList" then
             return function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-        elseif k == "CreateTargets" then  -- AJOUT
+        elseif k == "CreateTargets" then
             return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
         else
             return nil
@@ -190,7 +190,24 @@ if not isfolder('newvape/assets/'..gui) then makefolder('newvape/assets/'..gui) 
 local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
-    if newVape then vape = newVape; shared.vape = vape end
+    if newVape then
+        vape = newVape
+        shared.vape = vape
+
+        -- S'assurer que les méthodes manquantes sont définies
+        if not vape.CreateTargets then
+            vape.CreateTargets = function()
+                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+            end
+        end
+        -- Ajouter d'autres méthodes factices au besoin
+        if not vape.CreateModule then
+            vape.CreateModule = function() return {Options = {}, Toggle = function() end} end
+        end
+        if not vape.CreateCategoryList then
+            vape.CreateCategoryList = function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
+        end
+    end
 end
 if not vape.Libraries then vape.Libraries = {} end
 
