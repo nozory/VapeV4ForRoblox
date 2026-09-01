@@ -81,39 +81,8 @@ local function createFakeCategory(name)
     })
 end
 
--- Enveloppe une table existante avec une métatable qui fournit des clés par défaut
-local function wrapVape(realVape)
-    local wrapper = setmetatable({}, {
-        __index = function(_, k)
-            if realVape[k] ~= nil then
-                return realVape[k]
-            end
-
-            if k == "Categories" then
-                return setmetatable({}, {
-                    __index = function(_, catName)
-                        if catName == "Main" or catName == "Combat" or catName == "Blatant" or catName == "Render" or catName == "Utility" or catName == "World" or catName == "Inventory" or catName == "Friends" or catName == "Targets" or catName == "Profiles" then
-                            return createFakeCategory(catName)
-                        end
-                        return nil
-                    end
-                })
-            elseif k == "Clean" or k == "CreateNotification" or k == "Load" or k == "Save" or k == "Uninject" or k == "BlurCheck" or k == "UpdateGUI" then
-                return function() end
-            elseif k == "CreateCategory" then
-                return function(data) return createFakeCategory(data.Name) end
-            elseif k == "CreateCategoryList" or k == "CreateTargets" then
-                return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-            else
-                return nil
-            end
-        end
-    })
-    return wrapper
-end
-
--- Table temporaire de base
-local vape = wrapVape({
+-- Table temporaire initiale
+local vape = {
     Libraries = {},
     Settings = {
         GUI = {Options = {}},
@@ -129,11 +98,29 @@ local vape = wrapVape({
     Loaded = true,
     Profile = "default",
     Place = game.PlaceId,
-})
+}
+
+-- Ajout de méthodes factices sur la table temporaire
+function vape:Clean(...) end
+function vape:CreateNotification(...) end
+function vape:Load() end
+function vape:Save() end
+function vape:Uninject() end
+function vape:BlurCheck() end
+function vape:UpdateGUI() end
+function vape:CreateTargets()
+    return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+end
+function vape:CreateCategoryList(data)
+    return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+end
+function vape:CreateCategory(data)
+    return createFakeCategory(data.Name)
+end
 
 if shared.vape then pcall(function() shared.vape:Uninject() end) end
 shared.vape = vape
-getgenv().vape = vape -- rendre global pour universal.lua
+getgenv().vape = vape
 
 -- =============================================
 --  CORRECTION LOADSTRING
@@ -204,9 +191,28 @@ local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
     if newVape then
-        vape = wrapVape(newVape)
+        vape = newVape
         shared.vape = vape
-        getgenv().vape = vape -- important pour universal.lua
+        getgenv().vape = vape
+
+        -- Ajouter les méthodes manquantes directement sur la table réelle
+        if not vape.CreateTargets then
+            vape.CreateTargets = function()
+                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+            end
+        end
+        if not vape.CreateModule then
+            vape.CreateModule = function() return {Options = {}, Toggle = function() end} end
+        end
+        if not vape.CreateCategoryList then
+            vape.CreateCategoryList = function(data)
+                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+            end
+        end
+        -- Ajouter d'autres méthodes si nécessaire (CreateCategory, etc.)
+        if not vape.CreateCategory then
+            vape.CreateCategory = function(data) return createFakeCategory(data.Name) end
+        end
     end
 end
 
