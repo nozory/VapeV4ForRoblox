@@ -52,9 +52,22 @@ end)
 
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
--- Initialisation de vape avec méthodes temporaires pour la GUI
+-- Initialisation de vape avec méthodes temporaires et structures pour la GUI
 local vape = {
-    Libraries = {}
+    Libraries = {},
+    Categories = {
+        Friends = {
+            Options = {}
+        }
+    },
+    Settings = {
+        GUI = {
+            Options = {}
+        },
+        Modules = {
+            Options = {}
+        }
+    }
 }
 
 -- Méthodes factices pour éviter les erreurs pendant le chargement de la GUI
