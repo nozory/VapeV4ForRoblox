@@ -47,7 +47,7 @@ end)
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
 -- =============================================
---  FONCTIONS FACTICES POUR LA GUI
+--  FONCTIONS FACTICES GÉNÉRIQUES
 -- =============================================
 local function createFakeEvent()
     local handlers = {}
@@ -64,6 +64,9 @@ local function createFakeCategory(name)
         Modules = {},
         Settings = {Options = {}},
         Update = {Event = createFakeEvent()},
+        CreateTargets = function()
+            return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+        end,
     }, {
         __index = function(t, k)
             if k == "CreateModule" then
@@ -72,8 +75,6 @@ local function createFakeCategory(name)
                 return function() return {Object = {}} end
             elseif k == "CreateDivider" or k == "CreateOverlayBar" then
                 return function() end
-            elseif k == "CreateTargets" then
-                return function() return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
             else
                 return nil
             end
@@ -209,36 +210,44 @@ if guiFunc then
 end
 
 -- =============================================
---  AJOUT DES MÉTHODES MANQUANTES (MÉTATABLE)
+--  AJOUT DES MÉTHODES MANQUANTES SUR vape ET SES CATÉGORIES
 -- =============================================
-local function addMissingMethods(t)
-    local mt = getmetatable(t) or {}
-    local oldIndex = mt.__index
-    mt.__index = function(_, k)
-        if k == "CreateTargets" then
-            return function()
-                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
-            end
-        elseif k == "CreateModule" then
-            return function() return {Options = {}, Toggle = function() end} end
-        elseif k == "CreateCategoryList" then
-            return function()
-                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
-            end
-        elseif k == "CreateCategory" then
-            return function(data) return createFakeCategory(data.Name) end
-        else
-            if oldIndex then
-                return oldIndex(_, k)
-            end
-            return nil
-        end
+if not vape.CreateTargets then
+    vape.CreateTargets = function()
+        return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
     end
-    setmetatable(t, mt)
-    return t
 end
 
-vape = addMissingMethods(vape)
+if not vape.CreateModule then
+    vape.CreateModule = function() return {Options = {}, Toggle = function() end} end
+end
+
+if not vape.CreateCategoryList then
+    vape.CreateCategoryList = function(data)
+        return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+    end
+end
+
+if not vape.CreateCategory then
+    vape.CreateCategory = function(data) return createFakeCategory(data.Name) end
+end
+
+-- S'assurer que chaque catégorie existante possède CreateTargets
+if vape.Categories then
+    for _, cat in pairs(vape.Categories) do
+        if type(cat) == "table" then
+            if not cat.CreateTargets then
+                cat.CreateTargets = function()
+                    return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+                end
+            end
+            if not cat.CreateModule then
+                cat.CreateModule = function() return {Options = {}, Toggle = function() end} end
+            end
+        end
+    end
+end
+
 shared.vape = vape
 getgenv().vape = vape
 
