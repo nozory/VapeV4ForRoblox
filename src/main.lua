@@ -135,6 +135,57 @@ end
 -- =============================================
 --  FIN CHARGEMENT entity
 -- =============================================
+-- =============================================
+--  COMMANDES VIA CONSOLE ROBLOX (F9)
+-- =============================================
+
+local function setupConsoleCommands()
+    -- Sauvegarde de l'ancien print
+    local oldPrint = print
+
+    -- Remplace print par notre version
+    print = function(...)
+        local args = {...}
+        local msg = table.concat(args, " ")
+        
+        -- Vérifie si le message est une commande ';container'
+        if type(msg) == "string" and msg:lower():match("^;container (.+)") then
+            local newPath = msg:match("^;container (.+)")
+            print("[Console] Container path updated to:", newPath)
+            
+            -- Met à jour la variable partagée
+            shared.PlayerContainer = newPath
+            
+            -- Met à jour entity si disponible
+            if vape.Libraries and vape.Libraries.entity then
+                if vape.Libraries.entity.updateContainer then
+                    vape.Libraries.entity.updateContainer(newPath)
+                elseif vape.Libraries.entity.Running then
+                    vape.Libraries.entity.stop()
+                    vape.Libraries.entity.start()
+                end
+            else
+                print("[Console] entity not loaded yet, value stored in shared.PlayerContainer")
+            end
+            
+            -- Notification (si disponible)
+            if vape.CreateNotification then
+                vape:CreateNotification("Container", "Set to: " .. newPath, 2)
+            end
+            
+            -- Ne pas afficher la commande dans la console (optionnel)
+            return
+        end
+        
+        -- Appelle l'ancien print pour tout le reste
+        oldPrint(...)
+    end
+end
+
+-- Lance l'écoute des commandes console
+task.spawn(setupConsoleCommands)
+
+print("[Main] Console commands ready. Type ';container <path>' in F9 console.")
 
 if not shared.VapeIndependent then
 	loadstring(downloadFile('newvape/games/universal.lua'), 'universal')()
