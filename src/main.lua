@@ -91,21 +91,19 @@ local vape = {
     }
 }
 
--- Méthodes factices pour éviter les erreurs pendant le chargement de la GUI
 function vape:Clean(...) end
 function vape:CreateNotification(...) end
 function vape:Load() end
 function vape:Save() end
 function vape:Uninject() end
 
--- On protège l'appel à l'ancien Uninject (s'il existe)
 if shared.vape then
     pcall(function()
         shared.vape:Uninject()
     end)
 end
 
-shared.vape = vape   -- <-- Assigner ici pour que la GUI puisse l'utiliser
+shared.vape = vape
 
 -- =============================================
 --  CORRECTION : éviter la récursion de loadstring
@@ -203,7 +201,12 @@ end
 -- =============================================
 --  Charge la GUI et remplace vape par l'objet réel
 -- =============================================
-vape = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')()
+local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
+if guiFunc then
+    vape = guiFunc() or vape
+else
+    warn("Failed to load GUI")
+end
 shared.vape = vape
 if not vape.Libraries then
     vape.Libraries = {}
