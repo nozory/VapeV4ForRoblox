@@ -85,12 +85,10 @@ end
 local function wrapVape(realVape)
     local wrapper = setmetatable({}, {
         __index = function(_, k)
-            -- D'abord, vérifier si la clé existe dans realVape
             if realVape[k] ~= nil then
                 return realVape[k]
             end
 
-            -- Sinon, fournir des valeurs par défaut
             if k == "Categories" then
                 return setmetatable({}, {
                     __index = function(_, catName)
@@ -135,6 +133,7 @@ local vape = wrapVape({
 
 if shared.vape then pcall(function() shared.vape:Uninject() end) end
 shared.vape = vape
+getgenv().vape = vape -- rendre global pour universal.lua
 
 -- =============================================
 --  CORRECTION LOADSTRING
@@ -205,12 +204,13 @@ local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
     if newVape then
-        vape = wrapVape(newVape)  -- envelopper la vraie table
+        vape = wrapVape(newVape)
         shared.vape = vape
+        getgenv().vape = vape -- important pour universal.lua
     end
 end
 
--- Attendre un court instant pour laisser la GUI se stabiliser
+-- Attendre un court instant
 task.wait(0.1)
 
 -- S'assurer que Libraries existe
