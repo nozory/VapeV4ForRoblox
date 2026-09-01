@@ -493,13 +493,13 @@ entitylib.start = function()
 		}
 		
 		-- Seulement si le conteneur a ChildRemoving (Workspace n'en a pas)
-		if container.ChildRemoving then
-			table.insert(connections, container.ChildRemoving:Connect(function(child)
+		
+			table.insert(connections, container.ChildRemoved:Connect(function(child)
 				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
 					entitylib.removeEntity(child)
 				end
 			end))
-		end
+	
 		
 		entitylib.Connections = connections
 	else
