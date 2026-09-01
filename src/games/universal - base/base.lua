@@ -1,10 +1,12 @@
+local oldLoadstring = loadstring
 local loadstring = function(...)
-	local res, err = loadstring(...)
+	local res, err = oldLoadstring(...)
 	if err and vape then
 		vape:CreateNotification('Vape', 'Failed to load : '..err, 30, 'alert')
 	end
 	return res
 end
+
 local isfile = isfile or function(file)
 	local suc, res = pcall(function()
 		return readfile(file)
@@ -354,7 +356,7 @@ run(function()
 			}
 		}
 	end
-
+	
 	entitylib.targetCheck = function(entity)
 		if entity.TeamCheck then
 			return entity:TeamCheck()
@@ -364,20 +366,24 @@ run(function()
 		if not select(2, whitelist:get(entity.Player)) then return false end
 		if vape.Settings.Modules.Options['Teams by server'].Enabled then
 			if not lplr.Team then return true end
-			if not entity.Player.Team then return true end
-			if entity.Player.Team ~= lplr.Team then return true end
-			return #entity.Player.Team:GetPlayers() == #playersService:GetPlayers()
+			local playerTeam = entity.Player and entity.Player.Team
+			if not playerTeam then return true end
+			if playerTeam ~= lplr.Team then return true end
+			return #playerTeam:GetPlayers() == #playersService:GetPlayers()
 		end
 		return true
 	end
 
 	entitylib.getEntityColor = function(entity)
-		entity = entity.Player
-		if not (entity and vape.Settings.Modules.Options['Use team color'].Enabled) then return end
-		if isFriend(entity, true) then
-			return Color3.fromHSV(vape.Categories.Friends.Options['Friends color'].Hue, vape.Categories.Friends.Options['Friends color'].Sat, vape.Categories.Friends.Options['Friends color'].Value)
-		end
-		return tostring(entity.TeamColor) ~= 'White' and entity.TeamColor.Color or nil
+    entity = entity.Player
+    if not (entity and vape.Settings.Modules.Options['Use team color'].Enabled) then return end
+    if isFriend(entity, true) then
+        return Color3.fromHSV(vape.Categories.Friends.Options['Friends color'].Hue, vape.Categories.Friends.Options['Friends color'].Sat, vape.Categories.Friends.Options['Friends color'].Value)
+    end
+    if entity and entity.TeamColor then
+        return tostring(entity.TeamColor) ~= 'White' and entity.TeamColor.Color or nil
+    end
+    return nil
 	end
 
 	vape:Clean(function()
