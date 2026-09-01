@@ -52,7 +52,11 @@ end)
 
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 
--- Initialisation de vape avec méthodes temporaires et structures pour la GUI
+-- =============================================
+--  CRÉATION DE LA TABLE VAPE TEMPORAIRE
+--  avec méthodes et structures factices
+-- =============================================
+
 local function createFakeEvent()
     local handlers = {}
     return {
@@ -73,22 +77,63 @@ local function createFakeEvent()
     }
 end
 
+local function createFakeModule()
+    return {
+        Name = "Module",
+        Options = {},
+        Toggle = function() end,
+        Bind = {}
+    }
+end
+
+local function createFakeCategory(name)
+    return {
+        Name = name,
+        Options = {},
+        Modules = {},
+        Settings = {
+            Options = {},
+            CreateSettingsPane = function() return { CreateToggle = function() return {} end, CreateSlider = function() return {} end, CreateDropdown = function() return {} end, CreateButton = function() return {} end } end
+        },
+        CreateModule = function() return createFakeModule() end,
+        CreateDivider = function() end,
+        CreateOverlayBar = function() end,
+        CreateCategoryList = function() return { Update = { Event = createFakeEvent() }, Options = {} } end,
+    }
+end
+
 local vape = {
     Libraries = {},
     Categories = {
-        Friends = {
-            Options = {},
-            Update = { Event = createFakeEvent() }
-        },
-        Targets = {
-            Options = {},
-            Update = { Event = createFakeEvent() }
-        }
+        Main = createFakeCategory("Main"),
+        Combat = createFakeCategory("Combat"),
+        Blatant = createFakeCategory("Blatant"),
+        Render = createFakeCategory("Render"),
+        Utility = createFakeCategory("Utility"),
+        World = createFakeCategory("World"),
+        Inventory = createFakeCategory("Inventory"),
+        Friends = createFakeCategory("Friends"),
+        Targets = createFakeCategory("Targets"),
+        Profiles = createFakeCategory("Profiles")
     },
     Settings = {
         GUI = { Options = {} },
         Modules = { Options = {} }
-    }
+    },
+    GUIBind = { Keys = {"RightShift"}, Triggered = createFakeEvent() },
+    HeldKeybinds = {},
+    ActiveBinds = {},
+    RainbowSliders = {},
+    Windows = {},
+    Modules = {},
+    Legit = { Modules = {} },
+    VapeButton = nil,
+    CurrentTooltip = nil,
+    Binding = nil,
+    ThreadFix = false,
+    Loaded = true,
+    Profile = "default",
+    Place = game.PlaceId,
 }
 
 function vape:Clean(...) end
@@ -96,13 +141,27 @@ function vape:CreateNotification(...) end
 function vape:Load() end
 function vape:Save() end
 function vape:Uninject() end
+function vape:CreateCategory(data)
+    if not self.Categories then self.Categories = {} end
+    local cat = createFakeCategory(data.Name)
+    self.Categories[data.Name] = cat
+    return cat
+end
+function vape:CreateCategoryList(data)
+    local list = { Update = { Event = createFakeEvent() }, Options = {}, ListEnabled = {}, Object = { Children = {} } }
+    self.Categories[data.Name] = list
+    return list
+end
+function vape:BlurCheck() end
+function vape:UpdateGUI() end
+function vape:Color(hue) return Color3.fromHSV(hue, 1, 1) end
 
+-- Assigner la table temporaire à shared.vape
 if shared.vape then
     pcall(function()
         shared.vape:Uninject()
     end)
 end
-
 shared.vape = vape
 
 -- =============================================
@@ -183,7 +242,7 @@ local function finishLoading()
 
     if not shared.vapereload then
         if not vape.Categories then return end
-        if vape.Settings.GUI.Options['GUI bind indicator'].Enabled then
+        if vape.Settings.GUI.Options['GUI bind indicator'] and vape.Settings.GUI.Options['GUI bind indicator'].Enabled then
             vape:CreateNotification('Finished Loading', vape.VapeButton and 'Press the button in the top right to open GUI' or 'Press '..table.concat(vape.GUIBind.Keys, ' + '):upper()..' to open GUI', 5)
         end
     end
@@ -203,11 +262,12 @@ end
 -- =============================================
 local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
-    vape = guiFunc() or vape
-else
-    warn("Failed to load GUI")
+    local newVape = guiFunc()
+    if newVape then
+        vape = newVape
+        shared.vape = vape
+    end
 end
-shared.vape = vape
 if not vape.Libraries then
     vape.Libraries = {}
 end
