@@ -187,30 +187,40 @@ if not isfile('newvape/profiles/gui.txt') then writefile('newvape/profiles/gui.t
 local gui = 'new'
 if not isfolder('newvape/assets/'..gui) then makefolder('newvape/assets/'..gui) end
 
+-- =============================================
+--  Charge la GUI et remplace vape par l'objet réel
+-- =============================================
 local guiFunc = loadstring(downloadFile('newvape/guis/'..gui..'.lua'), 'gui')
 if guiFunc then
     local newVape = guiFunc()
     if newVape then
         vape = newVape
         shared.vape = vape
-
-        -- S'assurer que les méthodes manquantes sont définies
-        if not vape.CreateTargets then
-            vape.CreateTargets = function()
-                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
-            end
-        end
-        -- Ajouter d'autres méthodes factices au besoin
-        if not vape.CreateModule then
-            vape.CreateModule = function() return {Options = {}, Toggle = function() end} end
-        end
-        if not vape.CreateCategoryList then
-            vape.CreateCategoryList = function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
-        end
     end
 end
+
+-- Attendre un peu pour que la GUI finisse ses initialisations
+task.wait(0.1)
+
+-- S'assurer que les méthodes manquantes sont définies sur vape et shared.vape
+if not vape.CreateTargets then
+    vape.CreateTargets = function()
+        return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+    end
+end
+if not vape.CreateModule then
+    vape.CreateModule = function() return {Options = {}, Toggle = function() end} end
+end
+if not vape.CreateCategoryList then
+    vape.CreateCategoryList = function(data) return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}} end
+end
+shared.vape = vape  -- s'assurer que shared.vape pointe vers la même table modifiée
+
 if not vape.Libraries then vape.Libraries = {} end
 
+-- =============================================
+--  CHARGE entity.lua DANS vape.Libraries
+-- =============================================
 if not vape.Libraries.entity then
     local entityPath = 'newvape/libraries/entity.lua'
     local entityScript
@@ -222,6 +232,9 @@ if not vape.Libraries.entity then
     if entityScript then vape.Libraries.entity = entityScript(); print("[Main] entity loaded") else warn("[Main] Failed to load entity.lua") end
 end
 
+-- =============================================
+--  COMMANDES VIA CONSOLE ROBLOX (F9)
+-- =============================================
 local function setupConsoleCommands()
     local oldPrint = print
     print = function(...)
@@ -244,6 +257,9 @@ task.spawn(setupConsoleCommands)
 
 print("[Main] Console commands ready. Type ';container <path>' in F9 console.")
 
+-- =============================================
+--  EXÉCUTION DU JEU
+-- =============================================
 if not shared.VapeIndependent then
     loadstring(downloadFile('newvape/games/universal.lua'), 'universal')()
     if isfile('newvape/games/'..game.PlaceId..'.lua') then
