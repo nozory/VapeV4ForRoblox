@@ -123,7 +123,6 @@ local function getContainer()
 	end
 
 	-- On accepte Workspace, Folder, Model comme conteneurs valides
-	-- Workspace n'a pas ChildRemoving, on gérera ça dans start()
 	if not current:IsA("DataModel") and not current:IsA("Folder") and not current:IsA("Model") then
 		warn("[Entity] Container is not a valid DataModel/Folder/Model, fallback to Players")
 		return playersService
@@ -492,9 +491,9 @@ entitylib.start = function()
 			end)
 		}
 		
-		-- Seulement si le conteneur a ChildRemoving (Workspace n'en a pas)
-		if container.ChildRemoving then
-			table.insert(connections, container.ChildRemoving:Connect(function(child)
+		-- On n'utilise ChildRemoving que si ce n'est pas un DataModel (ex: Workspace)
+		if not container:IsA("DataModel") and container.ChildRemoving then
+			table.insert(connections, container.ChildRemoving:Connect(function(child))
 				if child:IsA("Model") and child:FindFirstChildOfClass("Humanoid") then
 					entitylib.removeEntity(child)
 				end
