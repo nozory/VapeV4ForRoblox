@@ -81,9 +81,21 @@ local function createFakeCategory(name)
     })
 end
 
--- Table temporaire initiale
+-- Table temporaire initiale avec Categories prêtes
 local vape = {
     Libraries = {},
+    Categories = {
+        Main = createFakeCategory("Main"),
+        Combat = createFakeCategory("Combat"),
+        Blatant = createFakeCategory("Blatant"),
+        Render = createFakeCategory("Render"),
+        Utility = createFakeCategory("Utility"),
+        World = createFakeCategory("World"),
+        Inventory = createFakeCategory("Inventory"),
+        Friends = createFakeCategory("Friends"),
+        Targets = createFakeCategory("Targets"),
+        Profiles = createFakeCategory("Profiles"),
+    },
     Settings = {
         GUI = {Options = {}},
         Modules = {Options = {}}
@@ -100,7 +112,7 @@ local vape = {
     Place = game.PlaceId,
 }
 
--- Ajout de méthodes factices sur la table temporaire
+-- Méthodes factices de base
 function vape:Clean(...) end
 function vape:CreateNotification(...) end
 function vape:Load() end
@@ -209,9 +221,18 @@ if guiFunc then
                 return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
             end
         end
-        -- Ajouter d'autres méthodes si nécessaire (CreateCategory, etc.)
         if not vape.CreateCategory then
             vape.CreateCategory = function(data) return createFakeCategory(data.Name) end
+        end
+        -- S'assurer que Categories existe avec Friends/Targets
+        if not vape.Categories then
+            vape.Categories = {}
+        end
+        if not vape.Categories.Friends then
+            vape.Categories.Friends = createFakeCategory("Friends")
+        end
+        if not vape.Categories.Targets then
+            vape.Categories.Targets = createFakeCategory("Targets")
         end
     end
 end
