@@ -1,4 +1,60 @@
 repeat task.wait() until game:IsLoaded()
+
+-- =============================================
+--  CONFIGURATION DU CONTENEUR VIA FICHIER LOCAL
+-- =============================================
+
+local CONFIG_FILE = "VapeConfigPath.txt"
+
+-- Fonction pour lire ou créer le fichier de configuration
+local function loadContainerFromFile()
+    local defaultPath = "Players"
+    local path = defaultPath
+    
+    -- Vérifie si le fichier existe
+    if isfile(CONFIG_FILE) then
+        local content = readfile(CONFIG_FILE)
+        -- Nettoie le contenu (supprime les espaces, retours à la ligne)
+        content = content:gsub("%s+", "")
+        if content ~= "" then
+            path = content
+            print("[Config] Loaded container from file:", path)
+        else
+            print("[Config] File is empty, using default:", defaultPath)
+            writefile(CONFIG_FILE, defaultPath)
+        end
+    else
+        -- Crée le fichier avec la valeur par défaut
+        writefile(CONFIG_FILE, defaultPath)
+        print("[Config] Created config file with default:", defaultPath)
+    end
+    
+    shared.PlayerContainer = path
+    return path
+end
+
+-- Charge la configuration au démarrage
+loadContainerFromFile()
+
+-- Sauvegarde la nouvelle valeur dans le fichier (si elle change)
+local function saveContainerToFile(path)
+    if path and path ~= "" then
+        writefile(CONFIG_FILE, path)
+        print("[Config] Saved container to file:", path)
+    end
+end
+
+-- Surveille les changements de shared.PlayerContainer pour les sauvegarder
+task.spawn(function()
+    local lastValue = shared.PlayerContainer
+    while task.wait(2) do
+        if shared.PlayerContainer and shared.PlayerContainer ~= lastValue then
+            saveContainerToFile(shared.PlayerContainer)
+            lastValue = shared.PlayerContainer
+        end
+    end
+end)
+
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
 if shared.vape then shared.vape:Uninject() end
 
