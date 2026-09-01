@@ -209,11 +209,44 @@ if guiFunc then
 end
 
 -- =============================================
---  CHARGE BASE.LUA (C'EST ICI QUE CreateTargets EST DÉFINI)
+--  AJOUT DES MÉTHODES MANQUANTES (MÉTATABLE)
+-- =============================================
+local function addMissingMethods(t)
+    local mt = getmetatable(t) or {}
+    local oldIndex = mt.__index
+    mt.__index = function(_, k)
+        if k == "CreateTargets" then
+            return function()
+                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+            end
+        elseif k == "CreateModule" then
+            return function() return {Options = {}, Toggle = function() end} end
+        elseif k == "CreateCategoryList" then
+            return function()
+                return {Update = {Event = createFakeEvent()}, Options = {}, ListEnabled = {}, Object = {Children = {}}}
+            end
+        elseif k == "CreateCategory" then
+            return function(data) return createFakeCategory(data.Name) end
+        else
+            if oldIndex then
+                return oldIndex(_, k)
+            end
+            return nil
+        end
+    end
+    setmetatable(t, mt)
+    return t
+end
+
+vape = addMissingMethods(vape)
+shared.vape = vape
+getgenv().vape = vape
+
+-- =============================================
+--  CHARGE BASE.LUA
 -- =============================================
 loadstring(downloadFile('newvape/base.lua'), 'base')()
 
--- Attendre un court instant pour laisser base.lua s'installer
 task.wait(0.1)
 
 if not vape.Libraries then
@@ -221,7 +254,7 @@ if not vape.Libraries then
 end
 
 -- =============================================
---  CHARGE ENTITY.LUA (déjà fait dans base.lua, mais on vérifie)
+--  CHARGE ENTITY.LUA (si pas déjà par base)
 -- =============================================
 if not vape.Libraries.entity then
     local entityPath = 'newvape/libraries/entity.lua'
