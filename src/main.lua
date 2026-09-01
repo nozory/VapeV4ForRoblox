@@ -57,7 +57,16 @@ local vape = {
     Libraries = {},
     Categories = {
         Friends = {
-            Options = {}
+            Options = {},
+            Update = {
+                Event = Instance.new('BindableEvent')
+            }
+        },
+        Targets = {
+            Options = {},
+            Update = {
+                Event = Instance.new('BindableEvent')
+            }
         }
     },
     Settings = {
