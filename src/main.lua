@@ -51,7 +51,6 @@ task.spawn(function()
 end)
 
 shared.PlayerContainer = type(shared.PlayerContainer) == "string" and shared.PlayerContainer or "Players"
-if shared.vape then shared.vape:Uninject() end
 
 -- Initialisation de vape avec méthodes temporaires pour la GUI
 local vape = {
@@ -64,6 +63,13 @@ function vape:CreateNotification(...) end
 function vape:Load() end
 function vape:Save() end
 function vape:Uninject() end
+
+-- On protège l'appel à l'ancien Uninject (s'il existe)
+if shared.vape then
+    pcall(function()
+        shared.vape:Uninject()
+    end)
+end
 
 shared.vape = vape   -- <-- Assigner ici pour que la GUI puisse l'utiliser
 
